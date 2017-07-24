@@ -1,0 +1,11 @@
+language: go
+
+go:
+ - 1.8.x
+# - 1.9.x
+
+dist: trusty
+
+script:
+ - go test .
+ - unformatted="$(gofmt -l .)"; ! [ -z "${unformatted}" ] && echo "${unformatted}" && exit 1
