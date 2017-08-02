@@ -15,107 +15,119 @@
 package forwardproxy
 
 import (
-	"testing"
-	"bytes"
-	"github.com/mholt/caddy"
-	_ "github.com/mholt/caddy/caddyhttp/httpserver"
-	_ "github.com/mholt/caddy/caddyhttp/root"
-	"net/http"
-	"time"
-	"fmt"
-	"os"
+	"bufio"
 	"crypto/tls"
-	"io/ioutil"
-	"io"
 	"errors"
+	"fmt"
+	_ "github.com/mholt/caddy/caddyhttp/header"
+	_ "github.com/mholt/caddy/caddyhttp/httpserver"
+	_ "github.com/mholt/caddy/caddyhttp/redirect"
+	_ "github.com/mholt/caddy/caddyhttp/root"
+	"io"
+	"net"
+	"net/http"
 	"net/url"
-)
-// TODO: force http1 and http2
-func TestIsSubdomain(t *testing.T) {
-	testSubDomain := func(s, domain string, expectedResult bool) {
-		result := isSubdomain(s, domain)
-		if result != expectedResult {
-			t.Fatalf("Expected: isSubdomain(%s, %s) is %b, Got: %b", s, domain, expectedResult, result)
-		}
-	}
-	testSubDomain("hoooli.abc", "hooya.ya", false)
-	testSubDomain("", "hooya.ya", false)
-	testSubDomain("hoooli.abc", "", false)
-	testSubDomain("hoooli.abc", "hiddenlink.localhost", false)
-	testSubDomain("www.hoooli.abc", "hoooli.abc", true)
-	testSubDomain("hoooli.abc", "hoooli.abc", true)
-	testSubDomain(".hoooli.abc", "hoooli.abc", true)
-	testSubDomain("sup.hoooli.abc", "hoooli.abc", true)
-	testSubDomain("qwe.qwe.qwe.hoooli.abc", "hoooli.abc", true)
-}
-
-type caddyTestServer struct {
-	*caddy.Instance
-	addr           string
-	root           string // expected to have index.html and pic.png
-	directives     []string
-	indexContents  []byte
-	picPngContents []byte
-}
-
-var (
-	caddyForwardProxy caddyTestServer
-	caddyTLSTestTarget caddyTestServer
-	caddyTestTarget caddyTestServer
+	"testing"
+	"time"
 )
 
-func (c *caddyTestServer) marshal() []byte {
-	b := bytes.Buffer{}
-	_, err := b.WriteString(c.addr + "\n\n")
-	if err != nil {
-		panic(err)
+func dial(proxyAddr string, useTls bool) (net.Conn, error) {
+	if useTls {
+		return tls.Dial("tcp", proxyAddr, &tls.Config{InsecureSkipVerify: true})
+	} else {
+		return net.Dial("tcp", proxyAddr)
 	}
-	_, err = b.WriteString("root " + c.root +"\n")
-	if err != nil {
-		panic(err)
-	}
-	for _, h := range c.directives {
-		b.WriteString(h + "\n")
-		if err != nil {
-			panic(err)
-		}
-	}
-	return b.Bytes()
 }
 
-func  (c *caddyTestServer) StartTestServer() {
+func getViaProxy(targetHost, resource, proxyAddr, httpTargetVer, proxyCredentials string, useTls bool) (*http.Response, error) {
+	proxyConn, err := dial(proxyAddr, useTls)
+	if err != nil {
+		return nil, err
+	}
+	return getResourceViaProxyConn(proxyConn, targetHost, resource, httpTargetVer, proxyCredentials)
+}
+
+// if connect is not successful - that response is returned, otherwise the requested resource
+func connectAndGetViaProxy(targetHost, resource, proxyAddr, httpTargetVer, proxyCredentials, httpProxyVer string, useTls bool) (*http.Response, error) {
+	proxyConn, err := dial(proxyAddr, useTls)
+	if err != nil {
+		return nil, err
+	}
+
+	connectRequest := http.Request{Header: make(http.Header)}
+	if len(proxyCredentials) > 0 {
+		connectRequest.Header.Set("Proxy-Authorization", proxyCredentials)
+	}
+	connectRequest.Host = targetHost
+	connectRequest.URL, err = url.Parse("http://" + connectRequest.Host)
+	if err != nil {
+		return nil, err
+	}
+	connectRequest.RequestURI = connectRequest.Host
+	connectRequest.Method = "CONNECT"
+
+	switch httpProxyVer {
+	case "HTTP/2.0":
+		connectRequest.ProtoMajor = 2
+		connectRequest.ProtoMinor = 0
+	case "HTTP/1.1":
+		connectRequest.ProtoMajor = 1
+		connectRequest.ProtoMinor = 1
+	default:
+		panic("http2ProxyVer: " + httpProxyVer)
+	}
+	connectRequest.Proto = httpProxyVer
+
+	if len(proxyCredentials) > 0 {
+		connectRequest.Header.Set("Proxy-Authorization", proxyCredentials)
+	}
+	err = connectRequest.Write(proxyConn)
+	if err != nil {
+		return nil, err
+	}
+	connectResponse, err := http.ReadResponse(bufio.NewReader(proxyConn), &connectRequest)
+	if err != nil {
+		return connectResponse, err
+	}
+	if connectResponse.StatusCode != http.StatusOK {
+		return connectResponse, err
+	}
+
+	return getResourceViaProxyConn(proxyConn, targetHost, resource, httpTargetVer, proxyCredentials)
+}
+
+func getResourceViaProxyConn(proxyConn net.Conn, targetHost, resource, httpTargetVer, proxyCredentials string) (*http.Response, error) {
 	var err error
-	c.Instance, err = caddy.Start(caddy.CaddyfileInput{Contents: c.marshal(), ServerTypeName: "http"})
-	if err != nil {
-		panic(err)
+
+	request := http.Request{Header: make(http.Header)}
+	if len(proxyCredentials) > 0 {
+		request.Header.Set("Proxy-Authorization", proxyCredentials)
 	}
-	c.indexContents, err = ioutil.ReadFile(c.root + "/index.html")
+	request.Host = targetHost
+	request.URL, err = url.Parse("http://" + request.Host + resource)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	c.picPngContents, err = ioutil.ReadFile(c.root + "/pic.png")
+	request.RequestURI = request.Host + resource
+	request.Method = "GET"
+
+	switch httpTargetVer {
+	case "HTTP/2.0":
+		request.ProtoMajor = 2
+		request.ProtoMinor = 0
+	case "HTTP/1.1":
+		request.ProtoMajor = 1
+		request.ProtoMinor = 1
+	default:
+		panic("http2TargetVer: " + httpTargetVer)
+	}
+	request.Proto = httpTargetVer
+
+	err = request.WriteProxy(proxyConn)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-}
-
-func TestMain(m *testing.M) {
-	caddyForwardProxy = caddyTestServer{addr: "localhost:1984", root: "./test/forwardproxy",
-		directives: []string{"tls self_signed", "forwardproxy"}}
-	caddyForwardProxy.StartTestServer()
-	caddyTLSTestTarget = caddyTestServer{addr: "localhost:6451", root: "./test/index",
-		directives: []string{"tls self_signed"}}
-	caddyTLSTestTarget.StartTestServer()
-	caddyTestTarget = caddyTestServer{addr: "localhost:4516", root: "./test/index"}
-	caddyTestTarget.StartTestServer()
-
-	retCode := m.Run()
-
-	caddyForwardProxy.Stop()
-	caddyTLSTestTarget.Stop()
-	caddyTestTarget.Stop()
-
-	os.Exit(retCode)
+	return http.ReadResponse(bufio.NewReader(proxyConn), &request)
 }
 
 // If response is expected: returns nil.
@@ -151,109 +163,23 @@ func responseExpected(res *http.Response, expectedResponse []byte) error {
 	return nil
 }
 
-// This is a sanity check confirming that target servers actually directly serve what they are expected to.
-// (And that they don't serve what they should not)
-func TestTheTest(t *testing.T) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		ResponseHeaderTimeout: 2 * time.Second,
-	}
-	client := &http.Client{Transport: tr, Timeout: 2 * time.Second}
-
-	// Request index
-	resp, err := client.Get("https://" + caddyTLSTestTarget.addr)
-	if err != nil {
-		t.Fatal(err)
-	} else if err = responseExpected(resp, caddyTLSTestTarget.indexContents); err != nil {
-		t.Fatal(err)
-	}
-
-	// Request pic
-	resp, err = client.Get("https://" + caddyTLSTestTarget.addr + "/pic.png")
-	if err != nil {
-		t.Fatal(err)
-	} else if err = responseExpected(resp, caddyTLSTestTarget.picPngContents); err != nil {
-		t.Fatal(err)
-	}
-
-	// Request pic, but expect index. Should fail
-	resp, err = client.Get("https://" + caddyTLSTestTarget.addr + "/pic.png")
-	if err != nil {
-		t.Fatal(err)
-	} else if err = responseExpected(resp, caddyTLSTestTarget.indexContents); err == nil {
-		t.Fatal(err)
-	}
-
-	// Request index, but expect pic. Should fail
-	resp, err = client.Get("https://" + caddyTLSTestTarget.addr)
-	if err != nil {
-		t.Fatal(err)
-	} else if err = responseExpected(resp, caddyTLSTestTarget.picPngContents); err == nil {
-		t.Fatal(err)
-	}
-
-	// Request non-existing resource
-	resp, err = client.Get("https://" + caddyTLSTestTarget.addr + "/idontexist")
-	if err != nil {
-		t.Fatal(err)
-	} else if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("Expected: 404 StatusNotFound, got %s. Response: %#v\n", resp.StatusCode, resp)
-	}
-
-	// All again for non-TLS
-	resp, err = client.Get("http://" + caddyTestTarget.addr)
-	if err != nil {
-		t.Fatal(err)
-	} else if err = responseExpected(resp, caddyTestTarget.indexContents); err != nil {
-		t.Fatal(err)
-	}
-
-	resp, err = client.Get("http://" + caddyTestTarget.addr + "/pic.png")
-	if err != nil {
-		t.Fatal(err)
-	} else if err = responseExpected(resp, caddyTestTarget.picPngContents); err != nil {
-		t.Fatal(err)
-	}
-
-	resp, err = client.Get("http://" + caddyTestTarget.addr + "/pic.png")
-	if err != nil {
-		t.Fatal(err)
-	} else if err = responseExpected(resp, caddyTestTarget.indexContents); err == nil {
-		t.Fatal(err)
-	}
-
-	resp, err = client.Get("http://" + caddyTestTarget.addr)
-	if err != nil {
-		t.Fatal(err)
-	} else if err = responseExpected(resp, caddyTestTarget.picPngContents); err == nil {
-		t.Fatal(err)
-	}
-
-	resp, err = client.Get("http://" + caddyTestTarget.addr + "/idontexist")
-	if err != nil {
-		t.Fatal(err)
-	} else if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("Expected: 404 StatusNotFound, got %s. Response: %#v\n", resp.StatusCode, resp)
-	}
-}
-
 func TestPassthrough(t *testing.T) {
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
 		ResponseHeaderTimeout: 2 * time.Second,
 	}
 	client := &http.Client{Transport: tr, Timeout: 2 * time.Second}
 	resp, err := client.Get("https://" + caddyForwardProxy.addr)
 	if err != nil {
 		t.Fatal(err)
-	} else if err = responseExpected(resp, caddyForwardProxy.indexContents); err != nil {
+	} else if err = responseExpected(resp, caddyForwardProxy.contents[""]); err != nil {
 		t.Fatal(err)
 	}
 
 	resp, err = client.Get("https://" + caddyForwardProxy.addr + "/pic.png")
 	if err != nil {
 		t.Fatal(err)
-	} else if err = responseExpected(resp, caddyForwardProxy.picPngContents); err != nil {
+	} else if err = responseExpected(resp, caddyForwardProxy.contents["/pic.png"]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -262,5 +188,134 @@ func TestPassthrough(t *testing.T) {
 		t.Fatal(err)
 	} else if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("Expected: 404 StatusNotFound, got %s. Response: %#v\n", resp.StatusCode, resp)
+	}
+}
+
+func TestGETNoAuth(t *testing.T) {
+	useTls := true
+	for _, httpTargetVer := range testHttpVersions {
+		for _, resource := range testResources {
+			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxy.addr, httpTargetVer, credentialsEmpty, useTls)
+			if err != nil {
+				t.Fatal(err)
+			} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+func TestGETAuthCorrect(t *testing.T) {
+	useTls := true
+	for _, httpTargetVer := range testHttpVersions {
+		for _, resource := range testResources {
+			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, credentialsCorrect, useTls)
+			if err != nil {
+				t.Fatal(err)
+			} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+func TestGETAuthWrong(t *testing.T) {
+	useTls := true
+	for _, wrongCreds := range credentialsWrong {
+		for _, httpTargetVer := range testHttpVersions {
+			for _, resource := range testResources {
+				response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, wrongCreds, useTls)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if response.StatusCode != http.StatusProxyAuthRequired {
+					t.Fatalf("Expected response: 407 StatusProxyAuthRequired, Got: %d %s\n",
+						response.StatusCode, response.Status)
+				}
+			}
+		}
+	}
+}
+
+func TestProxySelfGet(t *testing.T) {
+	useTls := true
+	// GETNoAuth to self
+	for _, httpTargetVer := range testHttpVersions {
+		for _, resource := range testResources {
+			response, err := getViaProxy(caddyForwardProxy.addr, resource, caddyForwardProxy.addr, httpTargetVer, credentialsEmpty, useTls)
+			if err != nil {
+				t.Fatal(err)
+			} else if err = responseExpected(response, caddyForwardProxy.contents[resource]); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	// GETAuthCorrect to self
+	for _, httpTargetVer := range testHttpVersions {
+		for _, resource := range testResources {
+			response, err := getViaProxy(caddyForwardProxyAuth.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, credentialsCorrect, useTls)
+			if err != nil {
+				t.Fatal(err)
+			} else if err = responseExpected(response, caddyForwardProxyAuth.contents[resource]); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+// TODO: self TestProxySelfConnect.
+// It requires tls-in-tls, which tests are not currently set up for.
+// Low priority since this is a functionality issue, not security, and it would be easily caught in the wild.
+
+func TestConnectNoAuth(t *testing.T) {
+	useTls := true
+	for _, httpProxyVer := range testHttpVersions {
+		for _, httpTargetVer := range testHttpVersions {
+			for _, resource := range testResources {
+				response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxy.addr, httpTargetVer, credentialsEmpty, httpProxyVer, useTls)
+				if err != nil {
+					t.Fatal(err)
+				} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+}
+
+func TestConnectAuthCorrect(t *testing.T) {
+	useTls := true
+	for _, httpProxyVer := range testHttpVersions {
+		for _, httpTargetVer := range testHttpVersions {
+			for _, resource := range testResources {
+				response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, credentialsCorrect, httpProxyVer, useTls)
+				if err != nil {
+					t.Fatal(err)
+				} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+}
+
+func TestConnectAuthWrong(t *testing.T) {
+	useTls := true
+	for _, wrongCreds := range credentialsWrong {
+		for _, httpProxyVer := range testHttpVersions {
+			for _, httpTargetVer := range testHttpVersions {
+				for _, resource := range testResources {
+					response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, wrongCreds, httpProxyVer, useTls)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if response.StatusCode != http.StatusProxyAuthRequired {
+						t.Fatalf("Expected response: 407 StatusProxyAuthRequired, Got: %d %s\n",
+							response.StatusCode, response.Status)
+					}
+				}
+			}
+		}
 	}
 }
