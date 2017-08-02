@@ -87,15 +87,13 @@ func setup(c *caddy.Controller) error {
 			}
 			fp.hideIP = true
 		case "experimental_probe_resist":
-			if len(args) < 1 {
-				return errors.New("Parse error: please specify secret subdomain you want to use to " +
-					"authenticate with your proxy: yourwebsite.com/${SECRET_LINK}")
-			}
 			if len(args) > 1 {
 				return c.ArgErr()
 			}
-			fp.probeResistDomain = args[0]
 			fp.probeResistEnabled = true
+			if len(args) == 1 {
+				fp.probeResistDomain = args[0]
+			}
 		case "response_timeout":
 			if len(args) != 1 {
 				return c.ArgErr()
