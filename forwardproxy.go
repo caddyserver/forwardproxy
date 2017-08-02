@@ -202,7 +202,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 	if fp.authRequired {
 		authErr = fp.checkCredentials(r)
 	}
-	if fp.probeResistEnabled && stripPort(r.Host) == fp.probeResistDomain {
+	if fp.probeResistEnabled && len(fp.probeResistDomain) > 0 && stripPort(r.Host) == fp.probeResistDomain {
 		return serveHiddenPage(w, authErr)
 	}
 	if isSubdomain(stripPort(r.Host), fp.hostname) && (r.Method != http.MethodConnect || authErr != nil) {

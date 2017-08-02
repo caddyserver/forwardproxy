@@ -87,7 +87,7 @@ func TestSetup(t *testing.T) {
 	testParsing([]string{"experimental_probe_resist"}, false)
 	testParsing([]string{"experimental_probe_resist local.host"}, false)
 	testParsing([]string{"experimental_probe_resist local.host very.local.host"}, false)
-	testParsing([]string{"experimental_probe_resist", "basicauth john doe"}, false)
+	testParsing([]string{"experimental_probe_resist", "basicauth john doe"}, true)
 	testParsing([]string{"experimental_probe_resist local.host", "basicauth john doe"}, true)
 	testParsing([]string{"experimental_probe_resist local.host very.local.host", "basicauth john doe"}, false)
 
