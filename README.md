@@ -1,6 +1,5 @@
 # ForwardProxy plugin for Caddy webserver
-
-Disclaimer: This is not an official Google product.  
+ 
 This plugin enables Caddy webserver to act as a ForwardProxy for http/2.0 and http/1.1 requests
 (http/1.0 might work, but is untested).
 
@@ -47,3 +46,9 @@ Default: no timeout(other timeouts will eventually close the connection).
 * dial_timeout integer  
 Sets timeout (in seconds) for establishing TCP connection to target website. Affects all requests.  
 Default: 20 seconds.
+
+### License
+Licensed under the [Apache License](LICENSE)
+
+Initial version of this plugin was developed by Google.
+Disclaimer: This is not an official Google product.
