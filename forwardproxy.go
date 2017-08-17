@@ -39,9 +39,11 @@ type ForwardProxy struct {
 	hideIP             bool
 	whitelistedPorts   []int
 	probeResistDomain  string
+	pacFilePath        string
 	probeResistEnabled bool
 	dialTimeout        time.Duration // for initial tcp connection
 	hostname           string        // do not intercept requests to the hostname (except for hidden link)
+	port               string        // port on which chain with forwardproxy is listening on
 }
 
 var bufferPool sync.Pool
@@ -185,7 +187,7 @@ func serveHiddenPage(w http.ResponseWriter, authErr error) (int, error) {
 </body>
 </html>`
 	const AuthFail = "Please authenticate yourself to the proxy."
-	const AuthOk = "Congratulations, you are succussfully authenticated to the proxy! Go browse all the things!"
+	const AuthOk = "Congratulations, you are successfully authenticated to the proxy! Go browse all the things!"
 
 	if authErr != nil {
 		w.Header().Set("Proxy-Authenticate", "Basic")
@@ -194,6 +196,24 @@ func serveHiddenPage(w http.ResponseWriter, authErr error) (int, error) {
 		return 0, authErr
 	}
 	w.Write([]byte(fmt.Sprintf(hiddenPage, AuthOk)))
+	return 0, nil
+}
+
+func (fp *ForwardProxy) shouldServePacFile(r *http.Request) bool {
+	if len(fp.pacFilePath) > 0 && r.URL.Path == fp.pacFilePath {
+		return true
+	}
+	return false
+}
+
+const pacFile = `
+function FindProxyForURL(url, host) {
+	return "HTTPS %s:%s";
+}
+`
+
+func (fp *ForwardProxy) servePacFile(w http.ResponseWriter) (int, error) {
+	fmt.Fprintf(w, pacFile, fp.hostname, fp.port)
 	return 0, nil
 }
 
@@ -208,6 +228,9 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 	if isSubdomain(stripPort(r.Host), fp.hostname) && (r.Method != http.MethodConnect || authErr != nil) {
 		// Always pass non-CONNECT requests to hostname
 		// Pass CONNECT requests only if probe resistance is enabled and not authenticated
+		if fp.shouldServePacFile(r) {
+			return fp.servePacFile(w)
+		}
 		return fp.Next.ServeHTTP(w, r)
 	}
 	if authErr != nil {

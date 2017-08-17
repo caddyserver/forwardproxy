@@ -91,6 +91,11 @@ func TestSetup(t *testing.T) {
 	testParsing([]string{"experimental_probe_resist local.host", "basicauth john doe"}, true)
 	testParsing([]string{"experimental_probe_resist local.host very.local.host", "basicauth john doe"}, false)
 
+	testParsing([]string{"serve_pac"}, true)
+	testParsing([]string{"serve_pac \"\""}, true)
+	testParsing([]string{"serve_pac proxyautoconfig.pac"}, true)
+	testParsing([]string{"serve_pac 1.pac 2.pac"}, false)
+
 	testParsing([]string{"response_timeout"}, false)
 	testParsing([]string{"response_timeout -1"}, false)
 	testParsing([]string{"response_timeout 1 2"}, false)

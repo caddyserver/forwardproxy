@@ -19,6 +19,7 @@ import (
 	"errors"
 	"github.com/mholt/caddy"
 	"github.com/mholt/caddy/caddyhttp/httpserver"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -29,8 +30,8 @@ import (
 
 func setup(c *caddy.Controller) error {
 	httpserver.GetConfig(c).FallbackSite = true
-	fp := &ForwardProxy{dialTimeout: time.Second * 20, hostname: httpserver.GetConfig(c).Host(),
-		httpTransport: *http.DefaultTransport.(*http.Transport)}
+	fp := &ForwardProxy{dialTimeout: time.Second * 20, httpTransport: *http.DefaultTransport.(*http.Transport),
+		hostname: httpserver.GetConfig(c).Host(), port: httpserver.GetConfig(c).Port()}
 	fp.httpTransport.DialTLS = func(network, addr string) (net.Conn, error) {
 		return nil, &http.ProtocolError{ErrorString: "Proxy does not fetch TLS resources, use CONNECT instead"}
 	}
@@ -94,6 +95,22 @@ func setup(c *caddy.Controller) error {
 			if len(args) == 1 {
 				fp.probeResistDomain = args[0]
 			}
+		case "serve_pac":
+			if len(args) > 1 {
+				return c.ArgErr()
+			}
+			if len(fp.pacFilePath) != 0 {
+				return errors.New("Parse error: serve_pac subdirective specified twice")
+			}
+			if len(args) == 1 {
+				fp.pacFilePath = args[0]
+				if !strings.HasPrefix(fp.pacFilePath, "/") {
+					fp.pacFilePath = "/" + fp.pacFilePath
+				}
+			} else {
+				fp.pacFilePath = "/proxy.pac"
+			}
+			log.Printf("Proxy Auto-Config will be served at %s%s\n", fp.hostname, fp.pacFilePath)
 		case "response_timeout":
 			if len(args) != 1 {
 				return c.ArgErr()
@@ -123,8 +140,13 @@ func setup(c *caddy.Controller) error {
 		}
 	}
 
-	if fp.probeResistEnabled && !fp.authRequired {
-		return errors.New("Parse error: probing resistance requires authentication")
+	if fp.probeResistEnabled {
+		if !fp.authRequired {
+			return errors.New("Parse error: probing resistance requires authentication")
+		}
+		if len(fp.probeResistDomain) > 0 {
+			log.Printf("Secret domain used to connect to proxy: %s\n", fp.probeResistDomain)
+		}
 	}
 
 	fp.httpTransport.DialContext = (&net.Dialer{
