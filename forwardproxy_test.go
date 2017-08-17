@@ -29,6 +29,7 @@ import (
 	"net/url"
 	"testing"
 	"time"
+	"strings"
 )
 
 func dial(proxyAddr string, useTls bool) (net.Conn, error) {
@@ -317,5 +318,30 @@ func TestConnectAuthWrong(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestPAC(t *testing.T) {
+	tr := &http.Transport{
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+		ResponseHeaderTimeout: 2 * time.Second,
+	}
+	client := &http.Client{Transport: tr, Timeout: 2 * time.Second}
+	resp, err := client.Get("https://" + caddyForwardProxy.addr + "/proxy.pac")
+	if err != nil {
+		t.Fatal(err)
+	}
+	splitAddr := strings.Split(caddyForwardProxy.addr, ":")
+	if err = responseExpected(resp, []byte(fmt.Sprintf(pacFile, splitAddr[0], splitAddr[1]))); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err = client.Get("https://" + caddyForwardProxyProbeResist.addr + "/superhiddenfile.pac")
+	if err != nil {
+		t.Fatal(err)
+	}
+	splitAddr = strings.Split(caddyForwardProxyProbeResist.addr, ":")
+	if err = responseExpected(resp, []byte(fmt.Sprintf(pacFile, splitAddr[0], splitAddr[1]))); err != nil {
+		t.Fatal(err)
 	}
 }

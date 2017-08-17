@@ -111,7 +111,7 @@ func (c *caddyTestServer) StartTestServer() {
 func TestMain(m *testing.M) {
 	caddyForwardProxy = caddyTestServer{addr: "127.0.0.1:1984", root: "./test/forwardproxy",
 		directives:   []string{"tls self_signed"},
-		proxyEnabled: true}
+		proxyEnabled: true, proxyDirectives: []string{"serve_pac"}}
 	caddyForwardProxy.StartTestServer()
 
 	caddyForwardProxyAuth = caddyTestServer{addr: "127.0.0.1:4891", root: "./test/forwardproxy",
@@ -121,7 +121,9 @@ func TestMain(m *testing.M) {
 
 	caddyForwardProxyProbeResist = caddyTestServer{addr: "127.0.0.1:8888", root: "./test/forwardproxy",
 		directives: []string{"tls self_signed"}, HTTPRedirectPort: "8880",
-		proxyEnabled: true, proxyDirectives: []string{"basicauth test pass", "experimental_probe_resist test.localhost"}}
+		proxyEnabled: true, proxyDirectives: []string{"basicauth test pass",
+			"experimental_probe_resist test.localhost",
+			"serve_pac superhiddenfile.pac"}}
 	caddyForwardProxyProbeResist.StartTestServer()
 
 	caddyDummyProbeResist = caddyTestServer{addr: "127.0.0.1:9999", root: "./test/forwardproxy",
