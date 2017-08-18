@@ -50,7 +50,7 @@ var bufferPool sync.Pool
 
 // TODO?: getStatusCode(err) that casts to http.Error, net Error, etc. and returns correct http status code
 
-func (fp ForwardProxy) connectPortIsAllowed(port string) bool {
+func (fp *ForwardProxy) connectPortIsAllowed(port string) bool {
 	portInt, err := strconv.Atoi(port)
 	if err != nil {
 		return false

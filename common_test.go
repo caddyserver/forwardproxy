@@ -194,7 +194,7 @@ func TestTheTest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	} else if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("Expected: 404 StatusNotFound, got %s. Response: %#v\n", resp.StatusCode, resp)
+		t.Fatalf("Expected: 404 StatusNotFound, got %d. Response: %#v\n", resp.StatusCode, resp)
 	}
 }
 
@@ -202,7 +202,7 @@ func TestIsSubdomain(t *testing.T) {
 	testSubDomain := func(s, domain string, expectedResult bool) {
 		result := isSubdomain(s, domain)
 		if result != expectedResult {
-			t.Fatalf("Expected: isSubdomain(%s, %s) is %b, Got: %b", s, domain, expectedResult, result)
+			t.Fatalf("Expected: isSubdomain(%s, %s) is %v, Got: %v", s, domain, expectedResult, result)
 		}
 	}
 	testSubDomain("hoooli.abc", "hooya.ya", false)

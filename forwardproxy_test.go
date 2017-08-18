@@ -27,9 +27,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
-	"strings"
 )
 
 func dial(proxyAddr string, useTls bool) (net.Conn, error) {
@@ -188,7 +188,7 @@ func TestPassthrough(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	} else if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("Expected: 404 StatusNotFound, got %s. Response: %#v\n", resp.StatusCode, resp)
+		t.Fatalf("Expected: 404 StatusNotFound, got %d. Response: %#v\n", resp.StatusCode, resp)
 	}
 }
 

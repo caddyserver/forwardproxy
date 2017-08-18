@@ -30,8 +30,15 @@ import (
 
 func setup(c *caddy.Controller) error {
 	httpserver.GetConfig(c).FallbackSite = true
-	fp := &ForwardProxy{dialTimeout: time.Second * 20, httpTransport: *http.DefaultTransport.(*http.Transport),
-		hostname: httpserver.GetConfig(c).Host(), port: httpserver.GetConfig(c).Port()}
+	fp := &ForwardProxy{dialTimeout: time.Second * 20,
+		hostname: httpserver.GetConfig(c).Host(), port: httpserver.GetConfig(c).Port(),
+		httpTransport: http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}}
 	fp.httpTransport.DialTLS = func(network, addr string) (net.Conn, error) {
 		return nil, &http.ProtocolError{ErrorString: "Proxy does not fetch TLS resources, use CONNECT instead"}
 	}
