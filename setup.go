@@ -87,7 +87,7 @@ func setup(c *caddy.Controller) error {
 				return c.ArgErr()
 			}
 			fp.hideIP = true
-		case "experimental_probe_resist":
+		case "probe_resistance":
 			if len(args) > 1 {
 				return c.ArgErr()
 			}

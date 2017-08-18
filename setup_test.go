@@ -84,12 +84,12 @@ func TestSetup(t *testing.T) {
 	testParsing([]string{"hide_ip 0"}, false)
 	testParsing([]string{"hide_ip 0 1"}, false)
 
-	testParsing([]string{"experimental_probe_resist"}, false)
-	testParsing([]string{"experimental_probe_resist local.host"}, false)
-	testParsing([]string{"experimental_probe_resist local.host very.local.host"}, false)
-	testParsing([]string{"experimental_probe_resist", "basicauth john doe"}, true)
-	testParsing([]string{"experimental_probe_resist local.host", "basicauth john doe"}, true)
-	testParsing([]string{"experimental_probe_resist local.host very.local.host", "basicauth john doe"}, false)
+	testParsing([]string{"probe_resistance"}, false)
+	testParsing([]string{"probe_resistance local.host"}, false)
+	testParsing([]string{"probe_resistance local.host very.local.host"}, false)
+	testParsing([]string{"probe_resistance", "basicauth john doe"}, true)
+	testParsing([]string{"probe_resistance local.host", "basicauth john doe"}, true)
+	testParsing([]string{"probe_resistance local.host very.local.host", "basicauth john doe"}, false)
 
 	testParsing([]string{"serve_pac"}, true)
 	testParsing([]string{"serve_pac \"\""}, true)

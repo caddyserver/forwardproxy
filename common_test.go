@@ -122,7 +122,7 @@ func TestMain(m *testing.M) {
 	caddyForwardProxyProbeResist = caddyTestServer{addr: "127.0.0.1:8888", root: "./test/forwardproxy",
 		directives: []string{"tls self_signed"}, HTTPRedirectPort: "8880",
 		proxyEnabled: true, proxyDirectives: []string{"basicauth test pass",
-			"experimental_probe_resist test.localhost",
+			"probe_resistance test.localhost",
 			"serve_pac superhiddenfile.pac"}}
 	caddyForwardProxyProbeResist.StartTestServer()
 
