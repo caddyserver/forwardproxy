@@ -125,7 +125,9 @@ func setup(c *caddy.Controller) error {
 					servers = append(servers, tmpproxy)
 				}
 			}
+
 			fp.upstreamServers = servers
+			log.Printf("Upstream Servers: %s\n", fp.upstreamServers)
 
 		case "probe_resistance":
 			if len(args) > 1 {
