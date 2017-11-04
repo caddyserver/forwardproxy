@@ -17,8 +17,6 @@ package forwardproxy
 import (
 	"encoding/base64"
 	"errors"
-	"github.com/mholt/caddy"
-	"github.com/mholt/caddy/caddyhttp/httpserver"
 	"log"
 	"net"
 	"net/http"
@@ -26,6 +24,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mholt/caddy"
+	"github.com/mholt/caddy/caddyhttp/httpserver"
 )
 
 func setup(c *caddy.Controller) error {
@@ -94,6 +95,38 @@ func setup(c *caddy.Controller) error {
 				return c.ArgErr()
 			}
 			fp.hideIP = true
+		case "disable_via":
+			if len(args) != 0 {
+				return c.ArgErr()
+			}
+			fp.disableVIA = true
+		case "upstream_servers":
+			if len(args) == 0 {
+				return c.ArgErr()
+			}
+			var servers []UpStreamProxy
+			if len(fp.upstreamServers) != 0 {
+				return errors.New("Parse error: upstream_servers subdirective specified twice")
+			}
+			for _, serverinfo := range args {
+				var server = strings.Split(serverinfo, ",")
+				if len(server) == 1 {
+					tmpproxy := UpStreamProxy{
+						Address: server[0],
+					}
+					servers = append(servers, tmpproxy)
+				}
+				if len(server) == 3 {
+					tmpproxy := UpStreamProxy{
+						Address:  server[0],
+						UserName: server[1],
+						Password: server[2],
+					}
+					servers = append(servers, tmpproxy)
+				}
+			}
+			fp.upstreamServers = servers
+
 		case "probe_resistance":
 			if len(args) > 1 {
 				return c.ArgErr()

@@ -18,11 +18,14 @@ package forwardproxy
 
 import (
 	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +33,12 @@ import (
 
 	"github.com/mholt/caddy/caddyhttp/httpserver"
 )
+
+type UpStreamProxy struct {
+	Address  string
+	UserName string
+	Password string
+}
 
 type ForwardProxy struct {
 	httpTransport      http.Transport
@@ -44,6 +53,8 @@ type ForwardProxy struct {
 	dialTimeout        time.Duration // for initial tcp connection
 	hostname           string        // do not intercept requests to the hostname (except for hidden link)
 	port               string        // port on which chain with forwardproxy is listening on
+	upstreamServers    []UpStreamProxy
+	disableVIA         bool
 }
 
 var bufferPool sync.Pool
@@ -287,6 +298,24 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if err != nil {
 			return http.StatusBadRequest, err
 		}
+		if len(fp.upstreamServers) != 0 {
+			var proxySRV = SelectUpstreamProxy(fp, r)
+			proxyURL, err := url.Parse(proxySRV.Address)
+			if err != nil {
+				return http.StatusInternalServerError, errors.New("Bad Upstream Config")
+			}
+			if len(proxySRV.UserName) > 0 {
+				auth := fmt.Sprintf(proxySRV.UserName + ":" + proxySRV.Password)
+				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
+				if outReq.Method == http.MethodConnect {
+					fp.httpTransport.ProxyConnectHeader.Add("Proxy-Authorization", basic)
+				} else {
+					outReq.Header.Add("Proxy-Authorization", basic)
+				}
+			}
+			fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
+
+		}
 		response, err := fp.httpTransport.RoundTrip(outReq)
 		if err != nil {
 			if response != nil {
@@ -296,14 +325,51 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			}
 			return http.StatusBadGateway, errors.New("failed to do RoundTrip(): " + err.Error())
 		}
-		return 0, forwardResponse(w, response)
+		return 0, forwardResponse(w, response, fp.disableVIA)
 	}
 }
 
+func SelectUpstreamProxy(fp *ForwardProxy, r *http.Request) UpStreamProxy {
+	var server = IPHash(fp.upstreamServers, r)
+	return *server
+}
+
+// hostByHashing returns an available host from pool based on a hashable string
+func hostByHashing(pool []UpStreamProxy, s string) *UpStreamProxy {
+	poolLen := uint32(len(pool))
+	index := hash(s) % poolLen
+	for i := uint32(0); i < poolLen; i++ {
+		index += i
+		host := pool[index%poolLen]
+
+		return &host
+
+	}
+	return nil
+}
+
+// hash calculates a hash based on string s
+func hash(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
+}
+
+// Select selects an up host from the pool based on hashing the request IP
+func IPHash(pool []UpStreamProxy, request *http.Request) *UpStreamProxy {
+	clientIP, _, err := net.SplitHostPort(request.RemoteAddr)
+	if err != nil {
+		clientIP = request.RemoteAddr
+	}
+	return hostByHashing(pool, clientIP)
+}
+
 // Removes hop-by-hop headers, and writes response into ResponseWriter.
-func forwardResponse(w http.ResponseWriter, response *http.Response) error {
+func forwardResponse(w http.ResponseWriter, response *http.Response, bvia bool) error {
 	w.Header().Del("Server") // remove Server: Caddy, append via instead
-	w.Header().Add("Via", strconv.Itoa(response.ProtoMajor)+"."+strconv.Itoa(response.ProtoMinor)+" caddy")
+	if !bvia {
+		w.Header().Add("Via", strconv.Itoa(response.ProtoMajor)+"."+strconv.Itoa(response.ProtoMinor)+" caddy")
+	}
 
 	for header, values := range response.Header {
 		for _, val := range values {
@@ -350,10 +416,13 @@ func (fp *ForwardProxy) generateForwardRequest(inReq *http.Request) (*http.Reque
 	if !fp.hideIP {
 		outReq.Header.Add("Forwarded", "for=\""+inReq.RemoteAddr+"\"")
 	}
+	if !fp.disableVIA {
+		// https://tools.ietf.org/html/rfc7230#section-5.7.1
+		outReq.Header.Add("Via", strconv.Itoa(inReq.ProtoMajor)+"."+strconv.Itoa(inReq.ProtoMinor)+" caddy")
+	}
 
-	// https://tools.ietf.org/html/rfc7230#section-5.7.1
-	outReq.Header.Add("Via", strconv.Itoa(inReq.ProtoMajor)+"."+strconv.Itoa(inReq.ProtoMinor)+" caddy")
 	return outReq, nil
+
 }
 
 var hopByHopHeaders = []string{
