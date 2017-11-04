@@ -271,27 +271,50 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if !fp.connectPortIsAllowed(r.URL.Port()) {
 			return http.StatusForbidden, errors.New("CONNECT port not allowed for " + r.URL.String())
 		}
-
-		targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
-		if err != nil {
-			return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
-		}
-		defer targetConn.Close()
-
-		switch r.ProtoMajor {
-		case 1: // http1: hijack the whole flow
-			return serveHijack(w, targetConn)
-		case 2: // http2: keep reading from "request" and writing into same response
-			defer r.Body.Close()
-			wFlusher, ok := w.(http.Flusher)
-			if !ok {
-				return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+		if len(fp.upstreamServers) != 0 {
+			var proxySRV = SelectUpstreamProxy(fp, r)
+			proxyURL, err := url.Parse(proxySRV.Address)
+			if err != nil {
+				return http.StatusInternalServerError, errors.New("Bad Upstream Config")
 			}
-			w.WriteHeader(http.StatusOK)
-			wFlusher.Flush()
-			return 0, dualStream(targetConn, r.Body, w, targetConn)
-		default:
-			panic("There was a check for http version, yet it's incorrect")
+			if len(proxySRV.UserName) > 0 {
+				auth := fmt.Sprintf(proxySRV.UserName + ":" + proxySRV.Password)
+				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
+				fp.httpTransport.ProxyConnectHeader.Add("Proxy-Authorization", basic)
+			}
+			fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
+			response, err := fp.httpTransport.RoundTrip(r)
+			if err != nil {
+				if response != nil {
+					if response.StatusCode != 0 {
+						return response.StatusCode, errors.New("failed to do RoundTrip(): " + err.Error())
+					}
+				}
+				return http.StatusBadGateway, errors.New("failed to do RoundTrip(): " + err.Error())
+			}
+			return 0, forwardResponse(w, response, fp.disableVIA)
+		} else {
+			targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
+			if err != nil {
+				return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
+			}
+			defer targetConn.Close()
+
+			switch r.ProtoMajor {
+			case 1: // http1: hijack the whole flow
+				return serveHijack(w, targetConn)
+			case 2: // http2: keep reading from "request" and writing into same response
+				defer r.Body.Close()
+				wFlusher, ok := w.(http.Flusher)
+				if !ok {
+					return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+				}
+				w.WriteHeader(http.StatusOK)
+				wFlusher.Flush()
+				return 0, dualStream(targetConn, r.Body, w, targetConn)
+			default:
+				panic("There was a check for http version, yet it's incorrect")
+			}
 		}
 	} else {
 		outReq, err := fp.generateForwardRequest(r)
@@ -307,15 +330,12 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			if len(proxySRV.UserName) > 0 {
 				auth := fmt.Sprintf(proxySRV.UserName + ":" + proxySRV.Password)
 				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
-				if outReq.Method == http.MethodConnect {
-					fp.httpTransport.ProxyConnectHeader.Add("Proxy-Authorization", basic)
-				} else {
-					outReq.Header.Add("Proxy-Authorization", basic)
-				}
+
+				outReq.Header.Add("Proxy-Authorization", basic)
 			}
 			fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
-
 		}
+
 		response, err := fp.httpTransport.RoundTrip(outReq)
 		if err != nil {
 			if response != nil {
