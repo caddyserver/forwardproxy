@@ -272,6 +272,11 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			return http.StatusForbidden, errors.New("CONNECT port not allowed for " + r.URL.String())
 		}
 		if len(fp.upstreamServers) != 0 {
+			outReq, err := fp.generateForwardRequest(r)
+			if err != nil {
+				return http.StatusBadRequest, err
+			}
+			fmt.Println("Inside upstream")
 			var proxySRV = SelectUpstreamProxy(fp, r)
 			proxyURL, err := url.Parse(proxySRV.Address)
 			if err != nil {
@@ -283,7 +288,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				fp.httpTransport.ProxyConnectHeader.Add("Proxy-Authorization", basic)
 			}
 			fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
-			response, err := fp.httpTransport.RoundTrip(r)
+			response, err := fp.httpTransport.RoundTrip(outReq)
 			if err != nil {
 				if response != nil {
 					if response.StatusCode != 0 {
@@ -431,8 +436,9 @@ func (fp *ForwardProxy) generateForwardRequest(inReq *http.Request) (*http.Reque
 			outReq.Header.Add(key, value)
 		}
 	}
-	removeHopByHop(outReq.Header)
-
+	if inReq.Method != http.MethodConnect {
+		removeHopByHop(outReq.Header)
+	}
 	if !fp.hideIP {
 		outReq.Header.Add("Forwarded", "for=\""+inReq.RemoteAddr+"\"")
 	}
