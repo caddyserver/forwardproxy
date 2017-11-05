@@ -395,13 +395,17 @@ func forwardResponse(w http.ResponseWriter, response *http.Response, bvia bool) 
 	if !bvia {
 		w.Header().Add("Via", strconv.Itoa(response.ProtoMajor)+"."+strconv.Itoa(response.ProtoMinor)+" caddy")
 	}
-
+	fmt.Printf("Inside forward response Method: %s\n", response.Request.Method)
 	for header, values := range response.Header {
 		for _, val := range values {
 			w.Header().Add(header, val)
+			fmt.Printf("Header: %s : %v\n", header, val)
 		}
 	}
-	removeHopByHop(w.Header())
+	if response.Request.Method != http.MethodConnect {
+
+		removeHopByHop(w.Header())
+	}
 	w.WriteHeader(response.StatusCode)
 	buf := bufferPool.Get().([]byte)
 	buf = buf[0:cap(buf)]
