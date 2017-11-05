@@ -290,7 +290,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			if len(proxySRV.UserName) > 0 {
 				auth := fmt.Sprintf(proxySRV.UserName + ":" + proxySRV.Password)
 				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
-				fp.httpTransport.ProxyConnectHeader.Add("Proxy-Authorization", basic)
+				//fp.httpTransport.ProxyConnectHeader.Add("Proxy-Authorization", basic)
 				//outReq.Header.Add("Proxy-Authorization", basic)
 				r.Header.Del("Proxy-Authorization")
 				r.Header.Add("Proxy-Authorization", basic)
