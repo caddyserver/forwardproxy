@@ -272,24 +272,28 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			return http.StatusForbidden, errors.New("CONNECT port not allowed for " + r.URL.String())
 		}
 		if len(fp.upstreamServers) != 0 {
-			outReq, err := fp.generateForwardRequest(r)
+			/*outReq, err := fp.generateForwardRequest(r)
 			if err != nil {
 				return http.StatusBadRequest, err
 			}
+			*/
 			fmt.Println("Inside upstream")
 			var proxySRV = SelectUpstreamProxy(fp, r)
 			proxyURL, err := url.Parse(proxySRV.Address)
 			if err != nil {
+				fmt.Printf("Response failed: %s\n", strconv.Itoa(http.StatusInternalServerError))
 				return http.StatusInternalServerError, errors.New("Bad Upstream Config")
 			}
 			if len(proxySRV.UserName) > 0 {
 				auth := fmt.Sprintf(proxySRV.UserName + ":" + proxySRV.Password)
 				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
 				fp.httpTransport.ProxyConnectHeader.Add("Proxy-Authorization", basic)
-				outReq.Header.Add("Proxy-Authorization", basic)
+				//outReq.Header.Add("Proxy-Authorization", basic)
+				r.Header.Del("Proxy-Authorization")
+				r.Header.Add("Proxy-Authorization", basic)
 			}
 			fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
-			response, err := fp.httpTransport.RoundTrip(outReq)
+			response, err := fp.httpTransport.RoundTrip(r)
 			if err != nil {
 				if response != nil {
 					if response.StatusCode != 0 {
