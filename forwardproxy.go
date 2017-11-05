@@ -279,6 +279,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			*/
 			fmt.Println("Inside upstream")
 			var proxySRV = SelectUpstreamProxy(fp, r)
+			fmt.Println("Parsing proxy url")
 			proxyURL, err := url.Parse(proxySRV.Address)
 			if err != nil {
 				fmt.Printf("Response failed: %s\n", strconv.Itoa(http.StatusInternalServerError))
