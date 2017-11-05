@@ -286,6 +286,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				auth := fmt.Sprintf(proxySRV.UserName + ":" + proxySRV.Password)
 				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
 				fp.httpTransport.ProxyConnectHeader.Add("Proxy-Authorization", basic)
+				outReq.Header.Add("Proxy-Authorization", basic)
 			}
 			fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
 			response, err := fp.httpTransport.RoundTrip(outReq)
