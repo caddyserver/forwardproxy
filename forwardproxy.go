@@ -279,15 +279,12 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				return http.StatusBadRequest, err
 			}
 
-			fmt.Println("Inside upstream")
 			var proxySRV = SelectUpstreamProxy(fp, r)
-			fmt.Println("Parsing proxy url")
+
 			proxyURL, err := url.Parse(proxySRV.Address)
 			if err != nil {
-				fmt.Printf("Response failed: %s\n", strconv.Itoa(http.StatusInternalServerError))
 				return http.StatusInternalServerError, errors.New("Bad Upstream Config")
 			}
-			fmt.Println("Changing headers")
 			if len(proxySRV.UserName) > 0 {
 				auth := fmt.Sprintf(proxySRV.UserName + ":" + proxySRV.Password)
 				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
@@ -295,7 +292,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				outReq.Header.Add("Proxy-Authorization", basic)
 				r.Header.Del("Proxy-Authorization")
 				r.Header.Add("Proxy-Authorization", basic)
-				fmt.Println("Headers adjusted")
+
 			}
 			var withBasicProxyAuth = http_dialer.WithProxyAuth(http_dialer.AuthBasic(proxySRV.UserName, proxySRV.Password))
 			var withConnectionTimeout = http_dialer.WithConnectionTimeout(fp.dialTimeout)
@@ -321,25 +318,6 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			default:
 				panic("There was a check for http version, yet it's incorrect")
 			}
-			//fmt.Println("Setting TLS Info")
-			//fp.httpTransport.TLSClientConfig = &tls.Config{}
-			/*fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
-			fmt.Println("Sending request")
-			response, err := fp.httpTransport.RoundTrip(outReq)
-			if err != nil {
-				if response != nil {
-					if response.StatusCode != 0 {
-						fmt.Printf("Response failed: %s\n", strconv.Itoa(response.StatusCode))
-						return response.StatusCode, errors.New("failed to do RoundTrip(): " + err.Error())
-
-					}
-				}
-				fmt.Printf("Response failed: %s\n", strconv.Itoa(http.StatusBadGateway))
-				return http.StatusBadGateway, errors.New("failed to do RoundTrip(): " + err.Error())
-
-			}
-			fmt.Println("Forwarding response")
-			return 0, forwardResponse(w, response, fp.disableVIA)*/
 		} else {
 		}
 		targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
@@ -449,11 +427,9 @@ func forwardResponse(w http.ResponseWriter, response *http.Response, bvia bool) 
 
 		removeHopByHop(w.Header())
 	} else {
-		fmt.Printf("Inside forward response Method: %s\n", response.Request.Method)
 		for header, values := range response.Header {
 			for _, val := range values {
 				w.Header().Add(header, val)
-				fmt.Printf("Header: %s : %v\n", header, val)
 			}
 		}
 
