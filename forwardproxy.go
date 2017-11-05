@@ -18,6 +18,7 @@ package forwardproxy
 
 import (
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -285,6 +286,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				fmt.Printf("Response failed: %s\n", strconv.Itoa(http.StatusInternalServerError))
 				return http.StatusInternalServerError, errors.New("Bad Upstream Config")
 			}
+			fmt.Println("Changing headers")
 			if len(proxySRV.UserName) > 0 {
 				auth := fmt.Sprintf(proxySRV.UserName + ":" + proxySRV.Password)
 				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
@@ -294,6 +296,8 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				r.Header.Add("Proxy-Authorization", basic)
 				fmt.Println("Headers adjusted")
 			}
+			fmt.Println("Setting TLS Info")
+			fp.httpTransport.TLSClientConfig = &tls.Config{}
 			fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
 			fmt.Println("Sending request")
 			response, err := fp.httpTransport.RoundTrip(r)
