@@ -18,7 +18,6 @@ package forwardproxy
 
 import (
 	"crypto/subtle"
-	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -296,8 +295,8 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				r.Header.Add("Proxy-Authorization", basic)
 				fmt.Println("Headers adjusted")
 			}
-			fmt.Println("Setting TLS Info")
-			fp.httpTransport.TLSClientConfig = &tls.Config{}
+			//fmt.Println("Setting TLS Info")
+			//fp.httpTransport.TLSClientConfig = &tls.Config{}
 			fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
 			fmt.Println("Sending request")
 			response, err := fp.httpTransport.RoundTrip(outReq)
