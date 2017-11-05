@@ -293,35 +293,41 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			if err != nil {
 				if response != nil {
 					if response.StatusCode != 0 {
+						fmt.Printf("Response failed: %s\n", strconv.Itoa(response.StatusCode))
 						return response.StatusCode, errors.New("failed to do RoundTrip(): " + err.Error())
+
 					}
 				}
+				fmt.Printf("Response failed: %s\n", strconv.Itoa(http.StatusBadGateway))
 				return http.StatusBadGateway, errors.New("failed to do RoundTrip(): " + err.Error())
+
 			}
+			fmt.Println("Forwarding response")
 			return 0, forwardResponse(w, response, fp.disableVIA)
 		} else {
-			targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
-			if err != nil {
-				return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
-			}
-			defer targetConn.Close()
-
-			switch r.ProtoMajor {
-			case 1: // http1: hijack the whole flow
-				return serveHijack(w, targetConn)
-			case 2: // http2: keep reading from "request" and writing into same response
-				defer r.Body.Close()
-				wFlusher, ok := w.(http.Flusher)
-				if !ok {
-					return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
-				}
-				w.WriteHeader(http.StatusOK)
-				wFlusher.Flush()
-				return 0, dualStream(targetConn, r.Body, w, targetConn)
-			default:
-				panic("There was a check for http version, yet it's incorrect")
-			}
 		}
+		targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
+		if err != nil {
+			return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
+		}
+		defer targetConn.Close()
+
+		switch r.ProtoMajor {
+		case 1: // http1: hijack the whole flow
+			return serveHijack(w, targetConn)
+		case 2: // http2: keep reading from "request" and writing into same response
+			defer r.Body.Close()
+			wFlusher, ok := w.(http.Flusher)
+			if !ok {
+				return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+			}
+			w.WriteHeader(http.StatusOK)
+			wFlusher.Flush()
+			return 0, dualStream(targetConn, r.Body, w, targetConn)
+		default:
+			panic("There was a check for http version, yet it's incorrect")
+		}
+
 	} else {
 		outReq, err := fp.generateForwardRequest(r)
 		if err != nil {
@@ -396,16 +402,25 @@ func forwardResponse(w http.ResponseWriter, response *http.Response, bvia bool) 
 	if !bvia {
 		w.Header().Add("Via", strconv.Itoa(response.ProtoMajor)+"."+strconv.Itoa(response.ProtoMinor)+" caddy")
 	}
-	fmt.Printf("Inside forward response Method: %s\n", response.Request.Method)
+
 	for header, values := range response.Header {
 		for _, val := range values {
 			w.Header().Add(header, val)
-			fmt.Printf("Header: %s : %v\n", header, val)
+
 		}
 	}
 	if response.Request.Method != http.MethodConnect {
 
 		removeHopByHop(w.Header())
+	} else {
+		fmt.Printf("Inside forward response Method: %s\n", response.Request.Method)
+		for header, values := range response.Header {
+			for _, val := range values {
+				w.Header().Add(header, val)
+				fmt.Printf("Header: %s : %v\n", header, val)
+			}
+		}
+
 	}
 	w.WriteHeader(response.StatusCode)
 	buf := bufferPool.Get().([]byte)
