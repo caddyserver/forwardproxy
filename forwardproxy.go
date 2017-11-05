@@ -291,8 +291,10 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				//outReq.Header.Add("Proxy-Authorization", basic)
 				r.Header.Del("Proxy-Authorization")
 				r.Header.Add("Proxy-Authorization", basic)
+				fmt.Println("Headers adjusted")
 			}
 			fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
+			fmt.Println("Sending request")
 			response, err := fp.httpTransport.RoundTrip(r)
 			if err != nil {
 				if response != nil {
