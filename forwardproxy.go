@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jeddytier4/go-http-dialer"
 	"github.com/mholt/caddy/caddyhttp/httpserver"
 )
 
@@ -272,6 +273,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			return http.StatusForbidden, errors.New("CONNECT port not allowed for " + r.URL.String())
 		}
 		if len(fp.upstreamServers) != 0 {
+
 			outReq, err := fp.generateForwardRequest(r)
 			if err != nil {
 				return http.StatusBadRequest, err
@@ -295,9 +297,33 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				r.Header.Add("Proxy-Authorization", basic)
 				fmt.Println("Headers adjusted")
 			}
+			var withBasicProxyAuth = http_dialer.WithProxyAuth(http_dialer.AuthBasic(proxySRV.UserName, proxySRV.Password))
+			var withConnectionTimeout = http_dialer.WithConnectionTimeout(fp.dialTimeout)
+			dialer := http_dialer.New(proxyURL, withBasicProxyAuth, withConnectionTimeout)
+			targetConn, err := dialer.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
+			if err != nil {
+				return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
+			}
+			defer targetConn.Close()
+
+			switch r.ProtoMajor {
+			case 1: // http1: hijack the whole flow
+				return serveHijack(w, targetConn)
+			case 2: // http2: keep reading from "request" and writing into same response
+				defer r.Body.Close()
+				wFlusher, ok := w.(http.Flusher)
+				if !ok {
+					return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+				}
+				w.WriteHeader(http.StatusOK)
+				wFlusher.Flush()
+				return 0, dualStream(targetConn, r.Body, w, targetConn)
+			default:
+				panic("There was a check for http version, yet it's incorrect")
+			}
 			//fmt.Println("Setting TLS Info")
 			//fp.httpTransport.TLSClientConfig = &tls.Config{}
-			fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
+			/*fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
 			fmt.Println("Sending request")
 			response, err := fp.httpTransport.RoundTrip(outReq)
 			if err != nil {
@@ -313,7 +339,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 
 			}
 			fmt.Println("Forwarding response")
-			return 0, forwardResponse(w, response, fp.disableVIA)
+			return 0, forwardResponse(w, response, fp.disableVIA)*/
 		} else {
 		}
 		targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
