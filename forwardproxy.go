@@ -407,6 +407,7 @@ func IPHash(pool []UpStreamProxy, request *http.Request) *UpStreamProxy {
 	if err != nil {
 		clientIP = request.RemoteAddr
 	}
+	fmt.Printf("Client IP: %s\n", clientIP)
 	return hostByHashing(pool, clientIP)
 }
 
