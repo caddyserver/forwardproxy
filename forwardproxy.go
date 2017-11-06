@@ -274,10 +274,10 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		}
 		if len(fp.upstreamServers) != 0 {
 
-			outReq, err := fp.generateForwardRequest(r)
-			if err != nil {
-				return http.StatusBadRequest, err
-			}
+			//outReq, err := fp.generateForwardRequest(r)
+			//if err != nil {
+			//	return http.StatusBadRequest, err
+			//}
 
 			var proxySRV = SelectUpstreamProxy(fp, r)
 
@@ -289,7 +289,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				auth := fmt.Sprintf(proxySRV.UserName + ":" + proxySRV.Password)
 				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
 				//fp.httpTransport.ProxyConnectHeader.Add("Proxy-Authorization", basic)
-				outReq.Header.Add("Proxy-Authorization", basic)
+				//outReq.Header.Add("Proxy-Authorization", basic)
 				r.Header.Del("Proxy-Authorization")
 				r.Header.Add("Proxy-Authorization", basic)
 
