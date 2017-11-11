@@ -277,7 +277,6 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			//if err != nil {
 			//	return http.StatusBadRequest, err
 			//}
-
 			var proxySRV = SelectUpstreamProxy(fp, r)
 
 			//proxyURL, err := url.Parse(proxySRV.Address)
@@ -291,36 +290,58 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				//outReq.Header.Add("Proxy-Authorization", basic)
 				r.Header.Del("Proxy-Authorization")
 				r.Header.Add("Proxy-Authorization", basic)
-
-			}
-			passwd, berr := proxySRV.FullURL.User.Password()
-			if berr == false {
-				return http.StatusBadGateway, errors.New(fmt.Sprintf("Bad upstream password: %s", passwd))
-			}
-			var withBasicProxyAuth = http_dialer.WithProxyAuth(http_dialer.AuthBasic(proxySRV.FullURL.User.Username(), passwd))
-			var withConnectionTimeout = http_dialer.WithConnectionTimeout(fp.dialTimeout)
-			dialer := http_dialer.New(&proxySRV.FullURL, withBasicProxyAuth, withConnectionTimeout)
-			targetConn, err := dialer.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
-			if err != nil {
-				return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
-			}
-			defer targetConn.Close()
-
-			switch r.ProtoMajor {
-			case 1: // http1: hijack the whole flow
-				return serveHijack(w, targetConn)
-			case 2: // http2: keep reading from "request" and writing into same response
-				defer r.Body.Close()
-				wFlusher, ok := w.(http.Flusher)
-				if !ok {
-					return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+				passwd, berr := proxySRV.FullURL.User.Password()
+				if berr == false {
+					return http.StatusBadGateway, errors.New(fmt.Sprintf("Bad upstream password: %s", passwd))
 				}
-				w.WriteHeader(http.StatusOK)
-				wFlusher.Flush()
-				return 0, dualStream(targetConn, r.Body, w, targetConn)
-			default:
-				panic("There was a check for http version, yet it's incorrect")
+				var withBasicProxyAuth = http_dialer.WithProxyAuth(http_dialer.AuthBasic(proxySRV.FullURL.User.Username(), passwd))
+				var withConnectionTimeout = http_dialer.WithConnectionTimeout(fp.dialTimeout)
+				dialer := http_dialer.New(&proxySRV.FullURL, withBasicProxyAuth, withConnectionTimeout)
+				targetConn, err := dialer.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
+				if err != nil {
+					return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
+				}
+				defer targetConn.Close()
+				switch r.ProtoMajor {
+				case 1: // http1: hijack the whole flow
+					return serveHijack(w, targetConn)
+				case 2: // http2: keep reading from "request" and writing into same response
+					defer r.Body.Close()
+					wFlusher, ok := w.(http.Flusher)
+					if !ok {
+						return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+					}
+					w.WriteHeader(http.StatusOK)
+					wFlusher.Flush()
+					return 0, dualStream(targetConn, r.Body, w, targetConn)
+				default:
+					panic("There was a check for http version, yet it's incorrect")
+				}
+			} else {
+				var withConnectionTimeout = http_dialer.WithConnectionTimeout(fp.dialTimeout)
+				dialer := http_dialer.New(&proxySRV.FullURL, withConnectionTimeout)
+				targetConn, err := dialer.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
+				if err != nil {
+					return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
+				}
+				defer targetConn.Close()
+				switch r.ProtoMajor {
+				case 1: // http1: hijack the whole flow
+					return serveHijack(w, targetConn)
+				case 2: // http2: keep reading from "request" and writing into same response
+					defer r.Body.Close()
+					wFlusher, ok := w.(http.Flusher)
+					if !ok {
+						return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+					}
+					w.WriteHeader(http.StatusOK)
+					wFlusher.Flush()
+					return 0, dualStream(targetConn, r.Body, w, targetConn)
+				default:
+					panic("There was a check for http version, yet it's incorrect")
+				}
 			}
+
 		} else {
 		}
 		targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
