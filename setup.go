@@ -20,6 +20,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -109,25 +110,20 @@ func setup(c *caddy.Controller) error {
 				return errors.New("Parse error: upstream_servers subdirective specified twice")
 			}
 			for _, serverinfo := range args {
-				var server = strings.Split(serverinfo, ",")
-				if len(server) == 1 {
-					tmpproxy := UpStreamProxy{
-						Address: server[0],
-					}
-					servers = append(servers, tmpproxy)
+				var server, err = url.Parse(serverinfo)
+				if err != nil {
+					return errors.New("Upstream servers need to be in URL format including http:// (https:// currently not supported) i.e. http://user:pass@1.1.1.1")
 				}
-				if len(server) == 3 {
-					tmpproxy := UpStreamProxy{
-						Address:  server[0],
-						UserName: server[1],
-						Password: server[2],
-					}
-					servers = append(servers, tmpproxy)
+				tmpproxy := UpStreamProxy{
+					Address: server.Host,
+					FullURL: *server,
 				}
+				servers = append(servers, tmpproxy)
+
 			}
 
 			fp.upstreamServers = servers
-			log.Printf("Upstream Servers: %s\n", fp.upstreamServers)
+			//log.Printf("Upstream Servers: %+s\n", fp.upstreamServers)
 
 		case "probe_resistance":
 			if len(args) > 1 {

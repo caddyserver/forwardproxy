@@ -36,9 +36,8 @@ import (
 )
 
 type UpStreamProxy struct {
-	Address  string
-	UserName string
-	Password string
+	Address string
+	FullURL url.URL
 }
 
 type ForwardProxy struct {
@@ -281,12 +280,12 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 
 			var proxySRV = SelectUpstreamProxy(fp, r)
 
-			proxyURL, err := url.Parse(proxySRV.Address)
-			if err != nil {
-				return http.StatusInternalServerError, errors.New("Bad Upstream Config")
-			}
-			if len(proxySRV.UserName) > 0 {
-				auth := fmt.Sprintf(proxySRV.UserName + ":" + proxySRV.Password)
+			//proxyURL, err := url.Parse(proxySRV.Address)
+			//if err != nil {
+			//return http.StatusInternalServerError, errors.New("Bad Upstream Config")
+			//}
+			if len(proxySRV.FullURL.User.Username()) > 0 {
+				auth := proxySRV.FullURL.User.String()
 				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
 				//fp.httpTransport.ProxyConnectHeader.Add("Proxy-Authorization", basic)
 				//outReq.Header.Add("Proxy-Authorization", basic)
@@ -294,9 +293,13 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				r.Header.Add("Proxy-Authorization", basic)
 
 			}
-			var withBasicProxyAuth = http_dialer.WithProxyAuth(http_dialer.AuthBasic(proxySRV.UserName, proxySRV.Password))
+			passwd, berr := proxySRV.FullURL.User.Password()
+			if berr == false {
+				return http.StatusBadGateway, errors.New(fmt.Sprintf("Bad upstream password: %s", passwd))
+			}
+			var withBasicProxyAuth = http_dialer.WithProxyAuth(http_dialer.AuthBasic(proxySRV.FullURL.User.Username(), passwd))
 			var withConnectionTimeout = http_dialer.WithConnectionTimeout(fp.dialTimeout)
-			dialer := http_dialer.New(proxyURL, withBasicProxyAuth, withConnectionTimeout)
+			dialer := http_dialer.New(&proxySRV.FullURL, withBasicProxyAuth, withConnectionTimeout)
 			targetConn, err := dialer.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
 			if err != nil {
 				return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
@@ -353,10 +356,9 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			if err != nil {
 				return http.StatusInternalServerError, errors.New("Bad Upstream Config")
 			}
-			if len(proxySRV.UserName) > 0 {
-				auth := fmt.Sprintf(proxySRV.UserName + ":" + proxySRV.Password)
+			if len(proxySRV.FullURL.User.Username()) > 0 {
+				auth := proxySRV.FullURL.User.String()
 				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
-
 				outReq.Header.Add("Proxy-Authorization", basic)
 			}
 			fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
