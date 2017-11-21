@@ -59,7 +59,7 @@ _Default: RFC 2616 compliant_
 
 - **upstream_servers [URL(s)]**
 Sets a collection (space delimited) of upstream proxy servers to forward traffic.  Basic proxy authentication is supported, and should be included in the URL as shown in the example.  Traffic is load balanced using source IP Hash.
-_Default: no upstream servers, traffic will be pulled directly by the proxy server.
+_Default: no upstream servers, traffic will be pulled directly by the proxy server._
 
 
 ## Client Configuration
