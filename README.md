@@ -35,6 +35,7 @@ _Default: no restrictions._
 
 - **hide_ip**  
 If set, forwardproxy will not add user's IP to "Forwarded:" header.  
+WARNING: there are other side-channels in your browser, that you might want to eliminate, such as WebRTC, see [here](https://www.ivpn.net/knowledgebase/158/My-IP-is-being-leaked-by-WebRTC-How-do-I-disable-it.html) how to disable it.  
 _Default: no hiding; `Forwarded: for="useraddress"` will be sent out._
 
 - **probe_resistance [secretlink.tld]**  
