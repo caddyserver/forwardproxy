@@ -84,6 +84,10 @@ func TestSetup(t *testing.T) {
 	testParsing([]string{"hide_ip 0"}, false)
 	testParsing([]string{"hide_ip 0 1"}, false)
 
+	testParsing([]string{"hide_via"}, true)
+	testParsing([]string{"hide_via 0"}, false)
+	testParsing([]string{"hide_via 0 1"}, false)
+
 	testParsing([]string{"probe_resistance"}, false)
 	testParsing([]string{"probe_resistance local.host"}, false)
 	testParsing([]string{"probe_resistance local.host very.local.host"}, false)

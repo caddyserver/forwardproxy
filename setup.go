@@ -94,6 +94,11 @@ func setup(c *caddy.Controller) error {
 				return c.ArgErr()
 			}
 			fp.hideIP = true
+		case "hide_via":
+			if len(args) != 0 {
+				return c.ArgErr()
+			}
+			fp.hideVia = true
 		case "probe_resistance":
 			if len(args) > 1 {
 				return c.ArgErr()
