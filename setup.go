@@ -100,6 +100,10 @@ func setup(c *caddy.Controller) error {
 			}
 			fp.probeResistEnabled = true
 			if len(args) == 1 {
+				lowercaseArg := strings.ToLower(args[0])
+				if lowercaseArg != args[0] {
+					log.Println("WARNING: secret domain appears to have uppercase letters in it, which are not visitable")
+				}
 				fp.probeResistDomain = args[0]
 			}
 		case "serve_pac":
