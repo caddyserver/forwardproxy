@@ -18,18 +18,27 @@ package forwardproxy
 
 import (
 	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/jeddytier4/go-http-dialer"
 	"github.com/mholt/caddy/caddyhttp/httpserver"
 )
+
+type UpStreamProxy struct {
+	Address string
+	FullURL url.URL
+}
 
 type ForwardProxy struct {
 	httpTransport      http.Transport
@@ -44,6 +53,8 @@ type ForwardProxy struct {
 	dialTimeout        time.Duration // for initial tcp connection
 	hostname           string        // do not intercept requests to the hostname (except for hidden link)
 	port               string        // port on which chain with forwardproxy is listening on
+	upstreamServers    []UpStreamProxy
+	disableVIA         bool
 }
 
 var bufferPool sync.Pool
@@ -260,7 +271,79 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if !fp.connectPortIsAllowed(r.URL.Port()) {
 			return http.StatusForbidden, errors.New("CONNECT port not allowed for " + r.URL.String())
 		}
+		if len(fp.upstreamServers) != 0 {
 
+			//outReq, err := fp.generateForwardRequest(r)
+			//if err != nil {
+			//	return http.StatusBadRequest, err
+			//}
+			var proxySRV = SelectUpstreamProxy(fp, r)
+
+			//proxyURL, err := url.Parse(proxySRV.Address)
+			//if err != nil {
+			//return http.StatusInternalServerError, errors.New("Bad Upstream Config")
+			//}
+			if len(proxySRV.FullURL.User.Username()) > 0 {
+				auth := proxySRV.FullURL.User.String()
+				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
+				//fp.httpTransport.ProxyConnectHeader.Add("Proxy-Authorization", basic)
+				//outReq.Header.Add("Proxy-Authorization", basic)
+				r.Header.Del("Proxy-Authorization")
+				r.Header.Add("Proxy-Authorization", basic)
+				passwd, berr := proxySRV.FullURL.User.Password()
+				if berr == false {
+					return http.StatusBadGateway, errors.New(fmt.Sprintf("Bad upstream password: %s", passwd))
+				}
+				var withBasicProxyAuth = http_dialer.WithProxyAuth(http_dialer.AuthBasic(proxySRV.FullURL.User.Username(), passwd))
+				var withConnectionTimeout = http_dialer.WithConnectionTimeout(fp.dialTimeout)
+				dialer := http_dialer.New(&proxySRV.FullURL, withBasicProxyAuth, withConnectionTimeout)
+				targetConn, err := dialer.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
+				if err != nil {
+					return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
+				}
+				defer targetConn.Close()
+				switch r.ProtoMajor {
+				case 1: // http1: hijack the whole flow
+					return serveHijack(w, targetConn)
+				case 2: // http2: keep reading from "request" and writing into same response
+					defer r.Body.Close()
+					wFlusher, ok := w.(http.Flusher)
+					if !ok {
+						return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+					}
+					w.WriteHeader(http.StatusOK)
+					wFlusher.Flush()
+					return 0, dualStream(targetConn, r.Body, w, targetConn)
+				default:
+					panic("There was a check for http version, yet it's incorrect")
+				}
+			} else {
+				var withConnectionTimeout = http_dialer.WithConnectionTimeout(fp.dialTimeout)
+				dialer := http_dialer.New(&proxySRV.FullURL, withConnectionTimeout)
+				targetConn, err := dialer.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
+				if err != nil {
+					return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
+				}
+				defer targetConn.Close()
+				switch r.ProtoMajor {
+				case 1: // http1: hijack the whole flow
+					return serveHijack(w, targetConn)
+				case 2: // http2: keep reading from "request" and writing into same response
+					defer r.Body.Close()
+					wFlusher, ok := w.(http.Flusher)
+					if !ok {
+						return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+					}
+					w.WriteHeader(http.StatusOK)
+					wFlusher.Flush()
+					return 0, dualStream(targetConn, r.Body, w, targetConn)
+				default:
+					panic("There was a check for http version, yet it's incorrect")
+				}
+			}
+
+		} else {
+		}
 		targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
 		if err != nil {
 			return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
@@ -282,11 +365,26 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		default:
 			panic("There was a check for http version, yet it's incorrect")
 		}
+
 	} else {
 		outReq, err := fp.generateForwardRequest(r)
 		if err != nil {
 			return http.StatusBadRequest, err
 		}
+		if len(fp.upstreamServers) != 0 {
+			var proxySRV = SelectUpstreamProxy(fp, r)
+			proxyURL, err := url.Parse(proxySRV.Address)
+			if err != nil {
+				return http.StatusInternalServerError, errors.New("Bad Upstream Config")
+			}
+			if len(proxySRV.FullURL.User.Username()) > 0 {
+				auth := proxySRV.FullURL.User.String()
+				basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
+				outReq.Header.Add("Proxy-Authorization", basic)
+			}
+			fp.httpTransport.Proxy = http.ProxyURL(proxyURL)
+		}
+
 		response, err := fp.httpTransport.RoundTrip(outReq)
 		if err != nil {
 			if response != nil {
@@ -296,21 +394,70 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			}
 			return http.StatusBadGateway, errors.New("failed to do RoundTrip(): " + err.Error())
 		}
-		return 0, forwardResponse(w, response)
+		return 0, forwardResponse(w, response, fp.disableVIA)
 	}
 }
 
+func SelectUpstreamProxy(fp *ForwardProxy, r *http.Request) UpStreamProxy {
+	var server = IPHash(fp.upstreamServers, r)
+	return *server
+}
+
+// hostByHashing returns an available host from pool based on a hashable string
+func hostByHashing(pool []UpStreamProxy, s string) *UpStreamProxy {
+	poolLen := uint32(len(pool))
+	index := hash(s) % poolLen
+	for i := uint32(0); i < poolLen; i++ {
+		index += i
+		host := pool[index%poolLen]
+
+		return &host
+
+	}
+	return nil
+}
+
+// hash calculates a hash based on string s
+func hash(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
+}
+
+// Select selects an up host from the pool based on hashing the request IP
+func IPHash(pool []UpStreamProxy, request *http.Request) *UpStreamProxy {
+	clientIP, _, err := net.SplitHostPort(request.RemoteAddr)
+	if err != nil {
+		clientIP = request.RemoteAddr
+	}
+	fmt.Printf("Client IP: %s\n", clientIP)
+	return hostByHashing(pool, clientIP)
+}
+
 // Removes hop-by-hop headers, and writes response into ResponseWriter.
-func forwardResponse(w http.ResponseWriter, response *http.Response) error {
+func forwardResponse(w http.ResponseWriter, response *http.Response, bvia bool) error {
 	w.Header().Del("Server") // remove Server: Caddy, append via instead
-	w.Header().Add("Via", strconv.Itoa(response.ProtoMajor)+"."+strconv.Itoa(response.ProtoMinor)+" caddy")
+	if !bvia {
+		w.Header().Add("Via", strconv.Itoa(response.ProtoMajor)+"."+strconv.Itoa(response.ProtoMinor)+" caddy")
+	}
 
 	for header, values := range response.Header {
 		for _, val := range values {
 			w.Header().Add(header, val)
+
 		}
 	}
-	removeHopByHop(w.Header())
+	if response.Request.Method != http.MethodConnect {
+
+		removeHopByHop(w.Header())
+	} else {
+		for header, values := range response.Header {
+			for _, val := range values {
+				w.Header().Add(header, val)
+			}
+		}
+
+	}
 	w.WriteHeader(response.StatusCode)
 	buf := bufferPool.Get().([]byte)
 	buf = buf[0:cap(buf)]
@@ -345,15 +492,19 @@ func (fp *ForwardProxy) generateForwardRequest(inReq *http.Request) (*http.Reque
 			outReq.Header.Add(key, value)
 		}
 	}
-	removeHopByHop(outReq.Header)
-
+	if inReq.Method != http.MethodConnect {
+		removeHopByHop(outReq.Header)
+	}
 	if !fp.hideIP {
 		outReq.Header.Add("Forwarded", "for=\""+inReq.RemoteAddr+"\"")
 	}
+	if !fp.disableVIA {
+		// https://tools.ietf.org/html/rfc7230#section-5.7.1
+		outReq.Header.Add("Via", strconv.Itoa(inReq.ProtoMajor)+"."+strconv.Itoa(inReq.ProtoMinor)+" caddy")
+	}
 
-	// https://tools.ietf.org/html/rfc7230#section-5.7.1
-	outReq.Header.Add("Via", strconv.Itoa(inReq.ProtoMajor)+"."+strconv.Itoa(inReq.ProtoMinor)+" caddy")
 	return outReq, nil
+
 }
 
 var hopByHopHeaders = []string{

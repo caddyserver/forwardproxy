@@ -18,6 +18,8 @@ forwardproxy {
     serve_pac        /secret-proxy.pac
     response_timeout 30
     dial_timeout     30
+    disable_via
+    upstream_servers http://user:password@proxy1:3128 http://user:pass@proxy2:8080
 }
 ```
 
@@ -51,6 +53,14 @@ _Default: no timeout (other timeouts will eventually close the connection)._
 - **dial_timeout [integer]**  
 Sets timeout (in seconds) for establishing TCP connection to target website. Affects all requests.  
 _Default: 20 seconds._
+
+- **disable_via**
+If set, disable adding the Via header to traffic coming through the proxy.  This breaks compliance with RFC 2616, but does add a level anonimity to traffic through the proxy.
+_Default: RFC 2616 compliant_
+
+- **upstream_servers [URL(s)]**
+Sets a collection (space delimited) of upstream proxy servers to forward traffic.  Basic proxy authentication is supported, and should be included in the URL as shown in the example.  Traffic is load balanced using source IP Hash.
+_Default: no upstream servers, traffic will be pulled directly by the proxy server._
 
 
 ## Client Configuration
