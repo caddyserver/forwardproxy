@@ -36,6 +36,11 @@ If set, forwardproxy will not add user's IP to "Forwarded:" header.
 WARNING: there are other side-channels in your browser, that you might want to eliminate, such as WebRTC, see [here](https://www.ivpn.net/knowledgebase/158/My-IP-is-being-leaked-by-WebRTC-How-do-I-disable-it.html) how to disable it.  
 _Default: no hiding; `Forwarded: for="useraddress"` will be sent out._
 
+- **hide_via**  
+If set, forwardproxy will not add Via header, and prevents simple way to detect proxy usage.  
+WARNING: there are other side-channels to determine this.  
+_Default: no hiding; Header in form of `Via: 2.0 caddy` will be sent out._
+
 - **probe_resistance [secretlink.tld]**  
 EXPERIMENTAL. (Here be dragons!) Attempts to hide the fact that the site is a forward proxy. Proxy will no longer respond with "407 Proxy Authentication Required" if credentials are incorrect or absent, and will attempt to mimic a generic Caddy web server as if the forward proxy is not configured. Since not all clients (browsers, operating systems, etc.) are able to be configured to send credentials right away (some only authenticate after receiving a 407), we will use a secret link. Make sure that specified domain name is visitable, does not contain uppercase characters, does not start with dot, etc. Only this address will trigger a 407 response, prompting browsers to request credentials from users and cache them for the rest of the session. It is possible to use any top level domain (tld), but for secrecy reasons it is highly recommended to use `.localhost`. Probing resistance works (and makes sense) only if basicauth is set up. To use your proxy with probe resistance, supply your basicauth credentials to your client configuration if possible. If your proxy client does not authenticate right away, you may then have to visit your secret link in your browser to trigger the authentication.  
 _Default: no probing resistance._

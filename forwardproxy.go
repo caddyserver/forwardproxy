@@ -37,6 +37,7 @@ type ForwardProxy struct {
 	authRequired       bool
 	authCredentials    [][]byte // slice with base64-encoded credentials
 	hideIP             bool
+	hideVia            bool
 	whitelistedPorts   []int
 	probeResistDomain  string
 	pacFilePath        string
@@ -352,7 +353,9 @@ func (fp *ForwardProxy) generateForwardRequest(inReq *http.Request) (*http.Reque
 	}
 
 	// https://tools.ietf.org/html/rfc7230#section-5.7.1
-	outReq.Header.Add("Via", strconv.Itoa(inReq.ProtoMajor)+"."+strconv.Itoa(inReq.ProtoMinor)+" caddy")
+	if !fp.hideVia {
+		outReq.Header.Add("Via", strconv.Itoa(inReq.ProtoMajor) + "." + strconv.Itoa(inReq.ProtoMinor) + " caddy")
+	}
 	return outReq, nil
 }
 
