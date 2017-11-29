@@ -23,6 +23,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -284,7 +285,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			panic("There was a check for http version, yet it's incorrect")
 		}
 	} else {
-		outReq, err := fp.generateForwardRequest(r)
+		outReq, err := fp.decorateOriginalRequest(r)
 		if err != nil {
 			return http.StatusBadRequest, err
 		}
@@ -320,43 +321,40 @@ func forwardResponse(w http.ResponseWriter, response *http.Response) error {
 	return err
 }
 
-// Based on http Request from client, generates new request to be forwarded to target server.
-// Some fields are shallow-copied, thus genOutReq will mutate original request.
+// Based on http Request from client, mutate original request to be forwarded to target server.
 // If error is not nil - http.StatusBadRequest is to be sent to client.
-func (fp *ForwardProxy) generateForwardRequest(inReq *http.Request) (*http.Request, error) {
+func (fp *ForwardProxy) decorateOriginalRequest(req *http.Request) (*http.Request, error) {
 	// Scheme has to be appended to avoid `unsupported protocol scheme ""` error.
 	// `http://` is used, since this initial request itself is always HTTP, regardless of what client and server
 	// may speak afterwards.
-	if len(inReq.RequestURI) == 0 {
+	if len(req.RequestURI) == 0 {
 		return nil, errors.New("malformed request: empty URI")
 	}
-	strUrl := inReq.RequestURI
+	strUrl := req.RequestURI
 	if strUrl[0] == '/' {
-		strUrl = inReq.Host + strUrl
+		strUrl = req.Host + strUrl
 	}
 	if !strings.Contains(strUrl, "://") {
 		strUrl = "http://" + strUrl
 	}
-	outReq, err := http.NewRequest(inReq.Method, strUrl, inReq.Body)
+
+	Url, err := url.Parse(strUrl)
 	if err != nil {
-		return outReq, errors.New("failed to create NewRequest: " + err.Error())
+		return nil, errors.New("malformed request: malformed URI")
 	}
-	for key, values := range inReq.Header {
-		for _, value := range values {
-			outReq.Header.Add(key, value)
-		}
-	}
-	removeHopByHop(outReq.Header)
+	req.URL = Url
+
+	removeHopByHop(req.Header)
 
 	if !fp.hideIP {
-		outReq.Header.Add("Forwarded", "for=\""+inReq.RemoteAddr+"\"")
+		req.Header.Add("Forwarded", "for=\""+req.RemoteAddr+"\"")
 	}
 
 	// https://tools.ietf.org/html/rfc7230#section-5.7.1
 	if !fp.hideVia {
-		outReq.Header.Add("Via", strconv.Itoa(inReq.ProtoMajor)+"."+strconv.Itoa(inReq.ProtoMinor)+" caddy")
+		req.Header.Add("Via", strconv.Itoa(req.ProtoMajor)+"."+strconv.Itoa(req.ProtoMinor)+" caddy")
 	}
-	return outReq, nil
+	return req, nil
 }
 
 var hopByHopHeaders = []string{
