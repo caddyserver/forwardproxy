@@ -1,5 +1,7 @@
 # Secure forward proxy plugin for the Caddy web server
- 
+
+[![Build Status](https://travis-ci.org/refraction-networking/utls.svg?branch=master)](https://travis-ci.org/refraction-networking/utls)
+
 This plugin enables [Caddy](https://caddyserver.com) to act as a forward proxy (as opposed to reverse proxy, Caddy's standard `proxy` directive) for HTTP/2.0 and HTTP/1.1 requests (HTTP/1.0 might work, but is untested).
 
 ## Caddyfile Syntax (Server Configuration)
