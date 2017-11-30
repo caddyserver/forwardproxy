@@ -6,6 +6,13 @@ go:
 
 dist: trusty
 
+install:
+  - go get -t ./...
+  - go get github.com/golang/lint/golint
+  # Install gometalinter
+  - go get github.com/alecthomas/gometalinter
+
 script:
- - go test .
- - unformatted="$(gofmt -l .)"; ! [ -z "${unformatted}" ] && echo "${unformatted}" && exit 1
+ - go test -race -v .
+ - gometalinter --install
+ - gometalinter --disable-all -E vet -E gofmt -E misspell -E ineffassign --tests .
