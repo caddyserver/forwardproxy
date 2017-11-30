@@ -354,7 +354,7 @@ func (fp *ForwardProxy) generateForwardRequest(inReq *http.Request) (*http.Reque
 
 	// https://tools.ietf.org/html/rfc7230#section-5.7.1
 	if !fp.hideVia {
-		outReq.Header.Add("Via", strconv.Itoa(inReq.ProtoMajor) + "." + strconv.Itoa(inReq.ProtoMinor) + " caddy")
+		outReq.Header.Add("Via", strconv.Itoa(inReq.ProtoMajor)+"."+strconv.Itoa(inReq.ProtoMinor)+" caddy")
 	}
 	return outReq, nil
 }
