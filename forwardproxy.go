@@ -334,7 +334,7 @@ func (fp *ForwardProxy) decorateOriginalRequest(req *http.Request) (*http.Reques
 	if strUrl[0] == '/' {
 		strUrl = req.Host + strUrl
 	}
-	if !strings.Contains(strUrl, "://") {
+	if !strings.HasPrefix(strUrl, "http://") {
 		strUrl = "http://" + strUrl
 	}
 
@@ -343,6 +343,7 @@ func (fp *ForwardProxy) decorateOriginalRequest(req *http.Request) (*http.Reques
 		return nil, errors.New("malformed request: malformed URI")
 	}
 	req.URL = Url
+	req.RequestURI = ""
 
 	removeHopByHop(req.Header)
 
