@@ -23,7 +23,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -327,22 +326,12 @@ func (fp *ForwardProxy) decorateOriginalRequest(req *http.Request) (*http.Reques
 	// Scheme has to be appended to avoid `unsupported protocol scheme ""` error.
 	// `http://` is used, since this initial request itself is always HTTP, regardless of what client and server
 	// may speak afterwards.
-	if len(req.RequestURI) == 0 {
-		return nil, errors.New("malformed request: empty URI")
+	if req.URL.Scheme == "" {
+		req.URL.Scheme = "http"
 	}
-	strUrl := req.RequestURI
-	if strUrl[0] == '/' {
-		strUrl = req.Host + strUrl
+	if req.URL.Host == "" {
+		req.URL.Host = req.Host
 	}
-	if !strings.HasPrefix(strUrl, "http://") {
-		strUrl = "http://" + strUrl
-	}
-
-	Url, err := url.Parse(strUrl)
-	if err != nil {
-		return nil, errors.New("malformed request: malformed URI")
-	}
-	req.URL = Url
 	req.RequestURI = ""
 
 	removeHopByHop(req.Header)
