@@ -284,11 +284,28 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			panic("There was a check for http version, yet it's incorrect")
 		}
 	} else {
-		outReq, err := fp.decorateOriginalRequest(r)
-		if err != nil {
-			return http.StatusBadRequest, err
+		// Scheme has to be appended to avoid `unsupported protocol scheme ""` error.
+		// `http://` is used, since this initial request itself is always HTTP, regardless of what client and server
+		// may speak afterwards.
+		if r.URL.Scheme == "" {
+			r.URL.Scheme = "http"
 		}
-		response, err := fp.httpTransport.RoundTrip(outReq)
+		if r.URL.Host == "" {
+			r.URL.Host = r.Host
+		}
+		r.RequestURI = ""
+
+		removeHopByHop(r.Header)
+
+		if !fp.hideIP {
+			r.Header.Add("Forwarded", "for=\""+r.RemoteAddr+"\"")
+		}
+
+		// https://tools.ietf.org/html/rfc7230#section-5.7.1
+		if !fp.hideVia {
+			r.Header.Add("Via", strconv.Itoa(r.ProtoMajor)+"."+strconv.Itoa(r.ProtoMinor)+" caddy")
+		}
+		response, err := fp.httpTransport.RoundTrip(r)
 		if err != nil {
 			if response != nil {
 				if response.StatusCode != 0 {
@@ -318,33 +335,6 @@ func forwardResponse(w http.ResponseWriter, response *http.Response) error {
 	_, err := io.CopyBuffer(w, response.Body, buf)
 	response.Body.Close()
 	return err
-}
-
-// Based on http Request from client, mutate original request to be forwarded to target server.
-// If error is not nil - http.StatusBadRequest is to be sent to client.
-func (fp *ForwardProxy) decorateOriginalRequest(req *http.Request) (*http.Request, error) {
-	// Scheme has to be appended to avoid `unsupported protocol scheme ""` error.
-	// `http://` is used, since this initial request itself is always HTTP, regardless of what client and server
-	// may speak afterwards.
-	if req.URL.Scheme == "" {
-		req.URL.Scheme = "http"
-	}
-	if req.URL.Host == "" {
-		req.URL.Host = req.Host
-	}
-	req.RequestURI = ""
-
-	removeHopByHop(req.Header)
-
-	if !fp.hideIP {
-		req.Header.Add("Forwarded", "for=\""+req.RemoteAddr+"\"")
-	}
-
-	// https://tools.ietf.org/html/rfc7230#section-5.7.1
-	if !fp.hideVia {
-		req.Header.Add("Via", strconv.Itoa(req.ProtoMajor)+"."+strconv.Itoa(req.ProtoMinor)+" caddy")
-	}
-	return req, nil
 }
 
 var hopByHopHeaders = []string{
