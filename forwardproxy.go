@@ -284,11 +284,28 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			panic("There was a check for http version, yet it's incorrect")
 		}
 	} else {
-		outReq, err := fp.generateForwardRequest(r)
-		if err != nil {
-			return http.StatusBadRequest, err
+		// Scheme has to be appended to avoid `unsupported protocol scheme ""` error.
+		// `http://` is used, since this initial request itself is always HTTP, regardless of what client and server
+		// may speak afterwards.
+		if r.URL.Scheme == "" {
+			r.URL.Scheme = "http"
 		}
-		response, err := fp.httpTransport.RoundTrip(outReq)
+		if r.URL.Host == "" {
+			r.URL.Host = r.Host
+		}
+		r.RequestURI = ""
+
+		removeHopByHop(r.Header)
+
+		if !fp.hideIP {
+			r.Header.Add("Forwarded", "for=\""+r.RemoteAddr+"\"")
+		}
+
+		// https://tools.ietf.org/html/rfc7230#section-5.7.1
+		if !fp.hideVia {
+			r.Header.Add("Via", strconv.Itoa(r.ProtoMajor)+"."+strconv.Itoa(r.ProtoMinor)+" caddy")
+		}
+		response, err := fp.httpTransport.RoundTrip(r)
 		if err != nil {
 			if response != nil {
 				if response.StatusCode != 0 {
@@ -318,45 +335,6 @@ func forwardResponse(w http.ResponseWriter, response *http.Response) error {
 	_, err := io.CopyBuffer(w, response.Body, buf)
 	response.Body.Close()
 	return err
-}
-
-// Based on http Request from client, generates new request to be forwarded to target server.
-// Some fields are shallow-copied, thus genOutReq will mutate original request.
-// If error is not nil - http.StatusBadRequest is to be sent to client.
-func (fp *ForwardProxy) generateForwardRequest(inReq *http.Request) (*http.Request, error) {
-	// Scheme has to be appended to avoid `unsupported protocol scheme ""` error.
-	// `http://` is used, since this initial request itself is always HTTP, regardless of what client and server
-	// may speak afterwards.
-	if len(inReq.RequestURI) == 0 {
-		return nil, errors.New("malformed request: empty URI")
-	}
-	strUrl := inReq.RequestURI
-	if strUrl[0] == '/' {
-		strUrl = inReq.Host + strUrl
-	}
-	if !strings.Contains(strUrl, "://") {
-		strUrl = "http://" + strUrl
-	}
-	outReq, err := http.NewRequest(inReq.Method, strUrl, inReq.Body)
-	if err != nil {
-		return outReq, errors.New("failed to create NewRequest: " + err.Error())
-	}
-	for key, values := range inReq.Header {
-		for _, value := range values {
-			outReq.Header.Add(key, value)
-		}
-	}
-	removeHopByHop(outReq.Header)
-
-	if !fp.hideIP {
-		outReq.Header.Add("Forwarded", "for=\""+inReq.RemoteAddr+"\"")
-	}
-
-	// https://tools.ietf.org/html/rfc7230#section-5.7.1
-	if !fp.hideVia {
-		outReq.Header.Add("Via", strconv.Itoa(inReq.ProtoMajor)+"."+strconv.Itoa(inReq.ProtoMinor)+" caddy")
-	}
-	return outReq, nil
 }
 
 var hopByHopHeaders = []string{
