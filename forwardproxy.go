@@ -38,6 +38,7 @@ type ForwardProxy struct {
 	authCredentials    [][]byte // slice with base64-encoded credentials
 	hideIP             bool
 	hideVia            bool
+	passthrough        bool // do not proxy requests, just push them down middleware chain
 	whitelistedPorts   []int
 	probeResistDomain  string
 	pacFilePath        string
@@ -246,6 +247,10 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			w.Header().Set("Proxy-Authenticate", "Basic")
 			return http.StatusProxyAuthRequired, authErr
 		}
+	}
+
+	if fp.passthrough {
+		return fp.Next.ServeHTTP(w, r)
 	}
 
 	if r.ProtoMajor != 1 && r.ProtoMajor != 2 {
