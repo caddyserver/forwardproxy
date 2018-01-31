@@ -190,6 +190,7 @@ func serveHiddenPage(w http.ResponseWriter, authErr error) (int, error) {
 	const AuthFail = "Please authenticate yourself to the proxy."
 	const AuthOk = "Congratulations, you are successfully authenticated to the proxy! Go browse all the things!"
 
+	w.Header().Set("Content-Type", "text/html")
 	if authErr != nil {
 		w.Header().Set("Proxy-Authenticate", "Basic")
 		w.WriteHeader(http.StatusProxyAuthRequired)
