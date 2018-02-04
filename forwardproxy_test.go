@@ -19,10 +19,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	_ "github.com/mholt/caddy/caddyhttp/header"
-	_ "github.com/mholt/caddy/caddyhttp/httpserver"
-	_ "github.com/mholt/caddy/caddyhttp/redirect"
-	_ "github.com/mholt/caddy/caddyhttp/root"
 	"io"
 	"net"
 	"net/http"
@@ -30,6 +26,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	_ "github.com/mholt/caddy/caddyhttp/header"
+	_ "github.com/mholt/caddy/caddyhttp/httpserver"
+	_ "github.com/mholt/caddy/caddyhttp/redirect"
+	_ "github.com/mholt/caddy/caddyhttp/root"
 )
 
 func dial(proxyAddr string, useTls bool) (net.Conn, error) {
@@ -196,10 +197,10 @@ func TestGETNoAuth(t *testing.T) {
 	useTls := true
 	for _, httpTargetVer := range testHttpVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxy.addr, httpTargetVer, credentialsEmpty, useTls)
+			response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxy.addr, httpTargetVer, credentialsEmpty, useTls)
 			if err != nil {
 				t.Fatal(err)
-			} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
+			} else if err = responseExpected(response, caddyHTTPTestTarget.contents[resource]); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -210,10 +211,10 @@ func TestGETAuthCorrect(t *testing.T) {
 	useTls := true
 	for _, httpTargetVer := range testHttpVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, credentialsCorrect, useTls)
+			response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, credentialsCorrect, useTls)
 			if err != nil {
 				t.Fatal(err)
-			} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
+			} else if err = responseExpected(response, caddyHTTPTestTarget.contents[resource]); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -225,7 +226,7 @@ func TestGETAuthWrong(t *testing.T) {
 	for _, wrongCreds := range credentialsWrong {
 		for _, httpTargetVer := range testHttpVersions {
 			for _, resource := range testResources {
-				response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, wrongCreds, useTls)
+				response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, wrongCreds, useTls)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -343,5 +344,66 @@ func TestPAC(t *testing.T) {
 	splitAddr = strings.Split(caddyForwardProxyProbeResist.addr, ":")
 	if err = responseExpected(resp, []byte(fmt.Sprintf(pacFile, splitAddr[0], splitAddr[1]))); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCONNECTViaUpstream(t *testing.T) {
+	useTls := true
+	for _, httpProxyVer := range testHttpVersions {
+		for _, httpTargetVer := range testHttpVersions {
+			for _, resource := range testResources {
+				response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyAuthedUpstreamEnter.addr,
+					httpTargetVer, credentialsUpstreamCorrect, httpProxyVer, useTls)
+				if err != nil {
+					t.Fatal(err)
+				} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+}
+
+func TestGETViaUpstream(t *testing.T) {
+	useTls := true
+	for _, httpTargetVer := range testHttpVersions {
+		for _, resource := range testResources {
+			response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyAuthedUpstreamEnter.addr, httpTargetVer,
+				credentialsUpstreamCorrect, useTls)
+			if err != nil {
+				t.Fatal(err)
+			} else if err = responseExpected(response, caddyHTTPTestTarget.contents[resource]); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+func TestUpstreamPassthrough(t *testing.T) {
+	// Usptreaming proxy still hosts things as expected
+	tr := &http.Transport{
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+		ResponseHeaderTimeout: 2 * time.Second,
+	}
+	client := &http.Client{Transport: tr, Timeout: 2 * time.Second}
+	resp, err := client.Get("https://" + caddyAuthedUpstreamEnter.addr)
+	if err != nil {
+		t.Fatal(err)
+	} else if err = responseExpected(resp, caddyAuthedUpstreamEnter.contents[""]); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err = client.Get("https://" + caddyAuthedUpstreamEnter.addr + "/pic.png")
+	if err != nil {
+		t.Fatal(err)
+	} else if err = responseExpected(resp, caddyAuthedUpstreamEnter.contents["/pic.png"]); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err = client.Get("https://" + caddyAuthedUpstreamEnter.addr + "/idontexist")
+	if err != nil {
+		t.Fatal(err)
+	} else if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("Expected: 404 StatusNotFound, got %d. Response: %#v\n", resp.StatusCode, resp)
 	}
 }
