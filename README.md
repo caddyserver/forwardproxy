@@ -59,6 +59,11 @@ _Default: no timeout (other timeouts will eventually close the connection)._
 Sets timeout (in seconds) for establishing TCP connection to target website. Affects all requests.  
 _Default: 20 seconds._
 
+- **passthrough**  
+UNTESTED. If set, forwardproxy will not forward requests, rather just pass them further down
+middleware chain. Example of usage: setting up non-forward
+[`proxy`](https://caddyserver.com/docs/proxy) that is protected by `forwardproxy` probe resistance.  
+_Default: forwardproxy will forward requests._
 
 ## Client Configuration
 
