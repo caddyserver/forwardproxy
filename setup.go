@@ -176,7 +176,7 @@ func setup(c *caddy.Controller) error {
 	if fp.upstream != "" {
 		fixedURL, err := url.Parse(fp.upstream)
 		if err != nil {
-			return c.ArgErr()
+			return errors.New("wrong upstream address")
 		}
 		switch fixedURL.Scheme {
 		case "http":
@@ -190,27 +190,23 @@ func setup(c *caddy.Controller) error {
 			}
 			newDialer, err := proxy.FromURL(fixedURL, dialer, nil)
 			if err != nil {
-				return c.ArgErr()
+				return errors.New("wrong upstream address")
 			}
 			fp.dial = newDialer.Dial
 			fp.httpTransport.Dial = newDialer.Dial
 		}
-	}
-
-	if fp.httpTransport.Dial == nil {
-		fp.httpTransport.DialContext = (&net.Dialer{
-			Timeout:   fp.dialTimeout,
-			KeepAlive: 30 * time.Second,
-			DualStack: true,
-		}).DialContext
-	}
-
-	if fp.dial == nil {
+	} else {
 		fp.dial = (&net.Dialer{
 			Timeout:   fp.dialTimeout,
 			KeepAlive: 30 * time.Second,
 			DualStack: true,
 		}).Dial
+
+		fp.httpTransport.DialContext = (&net.Dialer{
+			Timeout:   fp.dialTimeout,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext
 	}
 
 	httpserver.GetConfig(c).AddMiddleware(func(next httpserver.Handler) httpserver.Handler {

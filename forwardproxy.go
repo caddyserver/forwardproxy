@@ -45,8 +45,9 @@ type ForwardProxy struct {
 	dialTimeout        time.Duration // for initial tcp connection
 	hostname           string        // do not intercept requests to the hostname (except for hidden link)
 	port               string        // port on which chain with forwardproxy is listening on
-	upstream           string
-	dial               func(network, address string) (net.Conn, error)
+
+	upstream string                                          // upstream store the upstream server addr
+	dial     func(network, address string) (net.Conn, error) // when upstream is not empty, should customize dial function
 }
 
 var bufferPool sync.Pool
