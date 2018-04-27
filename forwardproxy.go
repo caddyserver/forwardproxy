@@ -38,6 +38,7 @@ type ForwardProxy struct {
 	authCredentials    [][]byte // slice with base64-encoded credentials
 	hideIP             bool
 	hideVia            bool
+	useProxy           bool
 	whitelistedPorts   []int
 	probeResistDomain  string
 	pacFilePath        string
@@ -262,10 +263,17 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if !fp.connectPortIsAllowed(r.URL.Port()) {
 			return http.StatusForbidden, errors.New("CONNECT port not allowed for " + r.URL.String())
 		}
+		if fp.useProxy {
 
-		targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
+		}
+
+		ip := net.ParseIP("10.145.29.61")
+		addr := &net.IPAddr{IP: ip, Zone: ""}
+		d := &net.Dialer{LocalAddr: addr, Timeout: fp.dialTimeout}
+		//targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
+		targetConn, err := d.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
 		if err != nil {
-			return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
+			return http.StatusBadGateway, fmt.Errorf("Dial %s failed: %v", r.URL.String(), err)
 		}
 		defer targetConn.Close()
 

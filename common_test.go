@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
-	"github.com/mholt/caddy"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mholt/caddy"
 )
 
 var credentialsEmpty = ""
@@ -34,7 +35,7 @@ Auth/NoAuth
 Empty/Correct/Wrong -- tries different credentials
 */
 var testResources = []string{"", "/pic.png"}
-var testHttpVersions = []string{"HTTP/2.0", "HTTP/1.1"}
+var testHTTPVersions = []string{"HTTP/2.0", "HTTP/1.1"}
 
 type caddyTestServer struct {
 	*caddy.Instance

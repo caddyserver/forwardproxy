@@ -19,10 +19,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	_ "github.com/mholt/caddy/caddyhttp/header"
-	_ "github.com/mholt/caddy/caddyhttp/httpserver"
-	_ "github.com/mholt/caddy/caddyhttp/redirect"
-	_ "github.com/mholt/caddy/caddyhttp/root"
 	"io"
 	"net"
 	"net/http"
@@ -30,6 +26,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	_ "github.com/mholt/caddy/caddyhttp/header"
+	_ "github.com/mholt/caddy/caddyhttp/httpserver"
+	_ "github.com/mholt/caddy/caddyhttp/redirect"
+	_ "github.com/mholt/caddy/caddyhttp/root"
 )
 
 func dial(proxyAddr string, useTls bool) (net.Conn, error) {
@@ -194,7 +195,7 @@ func TestPassthrough(t *testing.T) {
 
 func TestGETNoAuth(t *testing.T) {
 	useTls := true
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpTargetVer := range testHTTPVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxy.addr, httpTargetVer, credentialsEmpty, useTls)
 			if err != nil {
@@ -208,7 +209,7 @@ func TestGETNoAuth(t *testing.T) {
 
 func TestGETAuthCorrect(t *testing.T) {
 	useTls := true
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpTargetVer := range testHTTPVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, credentialsCorrect, useTls)
 			if err != nil {
@@ -223,7 +224,7 @@ func TestGETAuthCorrect(t *testing.T) {
 func TestGETAuthWrong(t *testing.T) {
 	useTls := true
 	for _, wrongCreds := range credentialsWrong {
-		for _, httpTargetVer := range testHttpVersions {
+		for _, httpTargetVer := range testHTTPVersions {
 			for _, resource := range testResources {
 				response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, wrongCreds, useTls)
 				if err != nil {
@@ -241,7 +242,7 @@ func TestGETAuthWrong(t *testing.T) {
 func TestProxySelfGet(t *testing.T) {
 	useTls := true
 	// GETNoAuth to self
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpTargetVer := range testHTTPVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy(caddyForwardProxy.addr, resource, caddyForwardProxy.addr, httpTargetVer, credentialsEmpty, useTls)
 			if err != nil {
@@ -253,7 +254,7 @@ func TestProxySelfGet(t *testing.T) {
 	}
 
 	// GETAuthCorrect to self
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpTargetVer := range testHTTPVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy(caddyForwardProxyAuth.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, credentialsCorrect, useTls)
 			if err != nil {
@@ -271,8 +272,8 @@ func TestProxySelfGet(t *testing.T) {
 
 func TestConnectNoAuth(t *testing.T) {
 	useTls := true
-	for _, httpProxyVer := range testHttpVersions {
-		for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHTTPVersions {
+		for _, httpTargetVer := range testHTTPVersions {
 			for _, resource := range testResources {
 				response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxy.addr, httpTargetVer, credentialsEmpty, httpProxyVer, useTls)
 				if err != nil {
@@ -287,8 +288,8 @@ func TestConnectNoAuth(t *testing.T) {
 
 func TestConnectAuthCorrect(t *testing.T) {
 	useTls := true
-	for _, httpProxyVer := range testHttpVersions {
-		for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHTTPVersions {
+		for _, httpTargetVer := range testHTTPVersions {
 			for _, resource := range testResources {
 				response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, credentialsCorrect, httpProxyVer, useTls)
 				if err != nil {
@@ -304,8 +305,8 @@ func TestConnectAuthCorrect(t *testing.T) {
 func TestConnectAuthWrong(t *testing.T) {
 	useTls := true
 	for _, wrongCreds := range credentialsWrong {
-		for _, httpProxyVer := range testHttpVersions {
-			for _, httpTargetVer := range testHttpVersions {
+		for _, httpProxyVer := range testHTTPVersions {
+			for _, httpTargetVer := range testHTTPVersions {
 				for _, resource := range testResources {
 					response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, wrongCreds, httpProxyVer, useTls)
 					if err != nil {
