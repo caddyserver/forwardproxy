@@ -153,16 +153,8 @@ func setup(c *caddy.Controller) error {
 			}
 			fp.dialTimeout = time.Second * time.Duration(timeout)
 		case "outgoing":
-			if len(args) != 1 {
+			if len(args) != 0 {
 				return c.ArgErr()
-			}
-			fp.outgoing.IPs = make([]net.IPAddr, len(args))
-			for i, p := range args {
-				outgoingIP := net.ParseIP(p)
-				if outgoingIP == nil {
-					return errors.New("Parse error: not an IP address " + p + ".")
-				}
-				fp.outgoing.IPs[i] = net.IPAddr{IP: outgoingIP, Zone: ""}
 			}
 			switch c.Val() {
 			case "ips":
