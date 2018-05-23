@@ -38,6 +38,7 @@ type ForwardProxy struct {
 	authCredentials    [][]byte // slice with base64-encoded credentials
 	hideIP             bool
 	hideVia            bool
+	useProxy           bool
 	whitelistedPorts   []int
 	probeResistDomain  string
 	pacFilePath        string
@@ -45,6 +46,19 @@ type ForwardProxy struct {
 	dialTimeout        time.Duration // for initial tcp connection
 	hostname           string        // do not intercept requests to the hostname (except for hidden link)
 	port               string        // port on which chain with forwardproxy is listening on
+	outgoing           struct {
+		IPs    []net.IPAddr
+		policy Policy
+	}
+}
+
+var (
+	supportedPolicies = make(map[string]func(string) Policy)
+)
+
+// RegisterPolicy adds a custom policy to the forward proxy.
+func RegisterPolicy(name string, policy func(string) Policy) {
+	supportedPolicies[name] = policy
 }
 
 var bufferPool sync.Pool
@@ -262,10 +276,17 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if !fp.connectPortIsAllowed(r.URL.Port()) {
 			return http.StatusForbidden, errors.New("CONNECT port not allowed for " + r.URL.String())
 		}
+		if fp.useProxy {
 
-		targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
+		}
+		addr := SelectOutgoing(fp, r)
+		//ip := net.ParseIP("10.145.29.61")
+		//addr := &net.IPAddr{IP: ip, Zone: ""}
+		d := &net.Dialer{LocalAddr: &addr, Timeout: fp.dialTimeout}
+		//targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
+		targetConn, err := d.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
 		if err != nil {
-			return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
+			return http.StatusBadGateway, fmt.Errorf("Dial %s failed: %v", r.URL.String(), err)
 		}
 		defer targetConn.Close()
 
@@ -393,4 +414,16 @@ func flushingIoCopy(dst io.Writer, src io.Reader, buf []byte) (written int64, er
 		}
 	}
 	return
+}
+
+//Function to select outgoing IP based on policy
+func SelectOutgoing(fp *ForwardProxy, r *http.Request) net.IPAddr {
+	pool := fp.outgoing.IPs
+	if len(pool) == 1 {
+		return pool[0]
+	}
+	if fp.outgoing.policy != nil {
+		return (&Random{}).Select(pool, r)
+	}
+	return fp.outgoing.policy.Select(pool, r)
 }
