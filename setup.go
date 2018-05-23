@@ -17,8 +17,6 @@ package forwardproxy
 import (
 	"encoding/base64"
 	"errors"
-	"github.com/mholt/caddy"
-	"github.com/mholt/caddy/caddyhttp/httpserver"
 	"log"
 	"net"
 	"net/http"
@@ -26,6 +24,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mholt/caddy"
+	"github.com/mholt/caddy/caddyhttp/httpserver"
 )
 
 func setup(c *caddy.Controller) error {
@@ -151,6 +152,47 @@ func setup(c *caddy.Controller) error {
 				return errors.New("Parse error: dial_timeout cannot be negative.")
 			}
 			fp.dialTimeout = time.Second * time.Duration(timeout)
+		case "outgoing":
+			if len(args) != 1 {
+				return c.ArgErr()
+			}
+			fp.outgoing.IPs = make([]net.IPAddr, len(args))
+			for i, p := range args {
+				outgoingIP := net.ParseIP(p)
+				if outgoingIP == nil {
+					return errors.New("Parse error: not an IP address " + p + ".")
+				}
+				fp.outgoing.IPs[i] = net.IPAddr{IP: outgoingIP, Zone: ""}
+			}
+			switch c.Val() {
+			case "ips":
+				if !c.NextArg() {
+					return c.ArgErr()
+				}
+				fp.outgoing.IPs = make([]net.IPAddr, len(c.Val()))
+				for i, p := range args {
+					outgoingIP := net.ParseIP(p)
+					if outgoingIP == nil {
+						return errors.New("Parse error: not an IP address " + p + ".")
+					}
+					fp.outgoing.IPs[i] = net.IPAddr{IP: outgoingIP, Zone: ""}
+				}
+			case "policy":
+				if !c.NextArg() {
+					return c.ArgErr()
+				}
+				policyCreateFunc, ok := supportedPolicies[c.Val()]
+				if !ok {
+					return c.ArgErr()
+				}
+				arg := ""
+				if c.NextArg() {
+					arg = c.Val()
+				}
+				fp.outgoing.policy = policyCreateFunc(arg)
+			default:
+				return c.Errf("unknown property '%s'", c.Val())
+			}
 		default:
 			return c.ArgErr()
 		}

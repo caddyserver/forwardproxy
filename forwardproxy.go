@@ -46,6 +46,25 @@ type ForwardProxy struct {
 	dialTimeout        time.Duration // for initial tcp connection
 	hostname           string        // do not intercept requests to the hostname (except for hidden link)
 	port               string        // port on which chain with forwardproxy is listening on
+	outgoing           struct {
+		IPs    []net.IPAddr
+		policy Policy
+	}
+}
+
+// Structure for outgoing configuration.  Todo, change configuration to multi tier
+type Outgoing struct {
+	IPs    []net.IPAddr
+	Policy string
+}
+
+var (
+	supportedPolicies = make(map[string]func(string) Policy)
+)
+
+// RegisterPolicy adds a custom policy to the forward proxy.
+func RegisterPolicy(name string, policy func(string) Policy) {
+	supportedPolicies[name] = policy
 }
 
 var bufferPool sync.Pool
@@ -266,10 +285,10 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if fp.useProxy {
 
 		}
-
-		ip := net.ParseIP("10.145.29.61")
-		addr := &net.IPAddr{IP: ip, Zone: ""}
-		d := &net.Dialer{LocalAddr: addr, Timeout: fp.dialTimeout}
+		addr := SelectOutgoing(fp, r)
+		//ip := net.ParseIP("10.145.29.61")
+		//addr := &net.IPAddr{IP: ip, Zone: ""}
+		d := &net.Dialer{LocalAddr: &addr, Timeout: fp.dialTimeout}
 		//targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
 		targetConn, err := d.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
 		if err != nil {
@@ -401,4 +420,16 @@ func flushingIoCopy(dst io.Writer, src io.Reader, buf []byte) (written int64, er
 		}
 	}
 	return
+}
+
+//Function to select outgoing IP based on policy
+func SelectOutgoing(fp *ForwardProxy, r *http.Request) net.IPAddr {
+	pool := fp.outgoing.IPs
+	if len(pool) == 1 {
+		return pool[0]
+	}
+	if fp.outgoing.policy != nil {
+		return (&Random{}).Select(pool, r)
+	}
+	return fp.outgoing.policy.Select(pool, r)
 }
