@@ -52,12 +52,6 @@ type ForwardProxy struct {
 	}
 }
 
-// Structure for outgoing configuration.  Todo, change configuration to multi tier
-type Outgoing struct {
-	IPs    []net.IPAddr
-	Policy string
-}
-
 var (
 	supportedPolicies = make(map[string]func(string) Policy)
 )
