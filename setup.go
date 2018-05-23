@@ -184,7 +184,7 @@ func setup(c *caddy.Controller) error {
 					}
 					fp.outgoing.policy = policyCreateFunc(arg)
 				default:
-					return c.Errf("unknown property '%s'", c.Val())
+					return c.Errf("unknown outgoing property '%s'", c.Val())
 				}
 			}
 		default:
