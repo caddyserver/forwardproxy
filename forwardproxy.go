@@ -462,8 +462,8 @@ func SelectOutgoing(fp *ForwardProxy, r *http.Request) string {
 		println("only 1 IP for outgoing")
 		return pool[0]
 	}
-	if fp.outgoing.policy != nil {
-		println("defaul random selected")
+	if fp.outgoing.policy == nil {
+		println("default random selected")
 		return (&Random{}).Select(pool, r)
 	}
 	println("%s policy selected", fp.outgoing.policy)
