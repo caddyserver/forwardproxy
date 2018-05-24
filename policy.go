@@ -111,7 +111,11 @@ func (r *IPHash) Select(pool HostPool, request *http.Request) string {
 	if err != nil {
 		clientIP = request.RemoteAddr
 	}
-	return hostByHashing(pool, clientIP)
+	remoteIP, _, err := net.SplitHostPort(request.Host)
+	if err != nil {
+		remoteIP = request.Host
+	}
+	return hostByHashing(pool, clientIP+remoteIP)
 }
 
 // URIHash is a policy that selects the host based on hashing the request URI
