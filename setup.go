@@ -156,40 +156,43 @@ func setup(c *caddy.Controller) error {
 			if len(args) != 0 {
 				return c.ArgErr()
 			}
-			for c.NextBlock() {
-				switch c.Val() {
-				case "ips":
-					if !c.NextArg() {
-						return c.ArgErr()
-					}
-					fp.outgoing.IPs = make([]net.IPAddr, len(c.Val()))
-					for i, p := range args {
-						outgoingIP := net.ParseIP(p)
-						if outgoingIP == nil {
-							return errors.New("Parse error: not an IP address " + p + ".")
+			for c.Next() {
+				for c.NextBlock() {
+					switch c.Val() {
+					case "ips":
+						if !c.NextArg() {
+							return c.ArgErr()
 						}
-						fp.outgoing.IPs[i] = net.IPAddr{IP: outgoingIP, Zone: ""}
+						fp.outgoing.IPs = make([]net.IPAddr, len(c.Val()))
+						for i, p := range args {
+							outgoingIP := net.ParseIP(p)
+							if outgoingIP == nil {
+								return errors.New("Parse error: not an IP address " + p + ".")
+							}
+							fp.outgoing.IPs[i] = net.IPAddr{IP: outgoingIP, Zone: ""}
+						}
+					case "policy":
+						if !c.NextArg() {
+							return c.ArgErr()
+						}
+						policyCreateFunc, ok := supportedPolicies[c.Val()]
+						if !ok {
+							return c.ArgErr()
+						}
+						arg := ""
+						if c.NextArg() {
+							arg = c.Val()
+						}
+						fp.outgoing.policy = policyCreateFunc(arg)
+					default:
+						return c.Errf("unknown outgoing property '%s'", c.Val())
 					}
-				case "policy":
-					if !c.NextArg() {
-						return c.ArgErr()
-					}
-					policyCreateFunc, ok := supportedPolicies[c.Val()]
-					if !ok {
-						return c.ArgErr()
-					}
-					arg := ""
-					if c.NextArg() {
-						arg = c.Val()
-					}
-					fp.outgoing.policy = policyCreateFunc(arg)
-				default:
-					return c.Errf("unknown outgoing property '%s'", c.Val())
 				}
 			}
 		default:
 			return c.ArgErr()
 		}
+
 	}
 
 	if fp.probeResistEnabled {
