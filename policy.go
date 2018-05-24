@@ -23,11 +23,11 @@ import (
 )
 
 // HostPool is a collection of UpstreamHosts.
-type HostPool []net.IPAddr
+type HostPool []string
 
 // Policy decides how a host will be selected from a pool.
 type Policy interface {
-	Select(pool HostPool, r *http.Request) net.IPAddr
+	Select(pool HostPool, r *http.Request) string
 }
 
 func init() {
@@ -43,12 +43,12 @@ func init() {
 type Random struct{}
 
 // Select selects an up host at random from the specified pool.
-func (r *Random) Select(pool HostPool, request *http.Request) net.IPAddr {
+func (r *Random) Select(pool HostPool, request *http.Request) string {
 
 	// Because the number of available hosts isn't known
 	// up front, the host is selected via reservoir sampling
 	// https://en.wikipedia.org/wiki/Reservoir_sampling
-	var randHost net.IPAddr
+	var randHost string
 	count := 0
 	for _, host := range pool {
 
@@ -70,7 +70,7 @@ type RoundRobin struct {
 }
 
 // Select selects an up host from the pool using a round-robin ordering scheme.
-func (r *RoundRobin) Select(pool HostPool, request *http.Request) net.IPAddr {
+func (r *RoundRobin) Select(pool HostPool, request *http.Request) string {
 	poolLen := uint32(len(pool))
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -80,13 +80,11 @@ func (r *RoundRobin) Select(pool HostPool, request *http.Request) net.IPAddr {
 		host := pool[r.robin%poolLen]
 		return host
 	}
-	ip := net.ParseIP("127.0.0.1")
-	addr := net.IPAddr{IP: ip, Zone: ""}
-	return addr
+	return "127.0.0.1"
 }
 
 // hostByHashing returns an available host from pool based on a hashable string
-func hostByHashing(pool HostPool, s string) net.IPAddr {
+func hostByHashing(pool HostPool, s string) string {
 	poolLen := uint32(len(pool))
 	index := hash(s) % poolLen
 	for i := uint32(0); i < poolLen; i++ {
@@ -94,9 +92,7 @@ func hostByHashing(pool HostPool, s string) net.IPAddr {
 		host := pool[index%poolLen]
 		return host
 	}
-	ip := net.ParseIP("127.0.0.1")
-	addr := net.IPAddr{IP: ip, Zone: ""}
-	return addr
+	return "127.0.0.1"
 }
 
 // hash calculates a hash based on string s
@@ -110,19 +106,23 @@ func hash(s string) uint32 {
 type IPHash struct{}
 
 // Select selects an up host from the pool based on hashing the request IP
-func (r *IPHash) Select(pool HostPool, request *http.Request) net.IPAddr {
+func (r *IPHash) Select(pool HostPool, request *http.Request) string {
 	clientIP, _, err := net.SplitHostPort(request.RemoteAddr)
 	if err != nil {
 		clientIP = request.RemoteAddr
 	}
-	return hostByHashing(pool, clientIP)
+	remoteIP, _, err := net.SplitHostPort(request.Host)
+	if err != nil {
+		remoteIP = request.Host
+	}
+	return hostByHashing(pool, clientIP+remoteIP)
 }
 
 // URIHash is a policy that selects the host based on hashing the request URI
 type URIHash struct{}
 
 // Select selects the host based on hashing the URI
-func (r *URIHash) Select(pool HostPool, request *http.Request) net.IPAddr {
+func (r *URIHash) Select(pool HostPool, request *http.Request) string {
 	return hostByHashing(pool, request.RequestURI)
 }
 
@@ -130,13 +130,11 @@ func (r *URIHash) Select(pool HostPool, request *http.Request) net.IPAddr {
 type First struct{}
 
 // Select selects the first available host from the pool
-func (r *First) Select(pool HostPool, request *http.Request) net.IPAddr {
+func (r *First) Select(pool HostPool, request *http.Request) string {
 	for _, host := range pool {
 		return host
 	}
-	ip := net.ParseIP("127.0.0.1")
-	addr := net.IPAddr{IP: ip, Zone: ""}
-	return addr
+	return "127.0.0.1"
 }
 
 // Header is a policy that selects based on a hash of the given header
@@ -147,17 +145,13 @@ type Header struct {
 }
 
 // Select selects the host based on hashing the header value
-func (r *Header) Select(pool HostPool, request *http.Request) net.IPAddr {
+func (r *Header) Select(pool HostPool, request *http.Request) string {
 	if r.Name == "" {
-		ip := net.ParseIP("127.0.0.1")
-		addr := net.IPAddr{IP: ip, Zone: ""}
-		return addr
+		return "127.0.0.1"
 	}
 	val := request.Header.Get(r.Name)
 	if val == "" {
-		ip := net.ParseIP("127.0.0.1")
-		addr := net.IPAddr{IP: ip, Zone: ""}
-		return addr
+		return "127.0.0.1"
 	}
 	return hostByHashing(pool, val)
 }

@@ -20,6 +20,10 @@ forwardproxy {
     serve_pac        /secret-proxy.pac
     response_timeout 30
     dial_timeout     30
+    outgoing {
+        ips 127.0.0.1 ::1
+        policy ip_hash
+    }
 }
 ```
 
@@ -59,6 +63,15 @@ _Default: no timeout (other timeouts will eventually close the connection)._
 Sets timeout (in seconds) for establishing TCP connection to target website. Affects all requests.  
 _Default: 20 seconds._
 
+- **outgoing [struct]**
+Sets the outgoing ips and load balancing policy to use.
+
+- **ips [string string]**
+Sets the ip(s) to use for outgoing connections
+
+- **policy [struct]**
+Sets the load balancing policy for outgoing connections.  Options are ip_hash, random, first, round_robin, and uri_hash.
+_Default: random_
 
 ## Client Configuration
 

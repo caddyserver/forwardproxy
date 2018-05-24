@@ -47,7 +47,7 @@ type ForwardProxy struct {
 	hostname           string        // do not intercept requests to the hostname (except for hidden link)
 	port               string        // port on which chain with forwardproxy is listening on
 	outgoing           struct {
-		IPs    []net.IPAddr
+		IPs    []string
 		policy Policy
 	}
 }
@@ -279,32 +279,55 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if fp.useProxy {
 
 		}
-		addr := SelectOutgoing(fp, r)
-		//ip := net.ParseIP("10.145.29.61")
-		//addr := &net.IPAddr{IP: ip, Zone: ""}
-		d := &net.Dialer{LocalAddr: &addr, Timeout: fp.dialTimeout}
-		//targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
-		targetConn, err := d.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
-		if err != nil {
-			return http.StatusBadGateway, fmt.Errorf("Dial %s failed: %v", r.URL.String(), err)
-		}
-		defer targetConn.Close()
-
-		switch r.ProtoMajor {
-		case 1: // http1: hijack the whole flow
-			return serveHijack(w, targetConn)
-		case 2: // http2: keep reading from "request" and writing into same response
-			defer r.Body.Close()
-			wFlusher, ok := w.(http.Flusher)
-			if !ok {
-				return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+		if fp.outgoing.IPs != nil {
+			addrIP := SelectOutgoing(fp, r)
+			addr, _ := net.ResolveTCPAddr("tcp", addrIP+":0")
+			d := &net.Dialer{LocalAddr: addr, Timeout: fp.dialTimeout}
+			targetConn, err := d.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
+			if err != nil {
+				return http.StatusBadGateway, fmt.Errorf("Dial %s failed: %v", r.URL.String(), err)
 			}
-			w.WriteHeader(http.StatusOK)
-			wFlusher.Flush()
-			return 0, dualStream(targetConn, r.Body, w, targetConn)
-		default:
-			panic("There was a check for http version, yet it's incorrect")
+			defer targetConn.Close()
+
+			switch r.ProtoMajor {
+			case 1: // http1: hijack the whole flow
+				return serveHijack(w, targetConn)
+			case 2: // http2: keep reading from "request" and writing into same response
+				defer r.Body.Close()
+				wFlusher, ok := w.(http.Flusher)
+				if !ok {
+					return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+				}
+				w.WriteHeader(http.StatusOK)
+				wFlusher.Flush()
+				return 0, dualStream(targetConn, r.Body, w, targetConn)
+			default:
+				panic("There was a check for http version, yet it's incorrect")
+			}
+		} else {
+			targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
+			if err != nil {
+				return http.StatusBadGateway, fmt.Errorf("Dial %s failed: %v", r.URL.String(), err)
+			}
+			defer targetConn.Close()
+
+			switch r.ProtoMajor {
+			case 1: // http1: hijack the whole flow
+				return serveHijack(w, targetConn)
+			case 2: // http2: keep reading from "request" and writing into same response
+				defer r.Body.Close()
+				wFlusher, ok := w.(http.Flusher)
+				if !ok {
+					return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+				}
+				w.WriteHeader(http.StatusOK)
+				wFlusher.Flush()
+				return 0, dualStream(targetConn, r.Body, w, targetConn)
+			default:
+				panic("There was a check for http version, yet it's incorrect")
+			}
 		}
+
 	} else {
 		// Scheme has to be appended to avoid `unsupported protocol scheme ""` error.
 		// `http://` is used, since this initial request itself is always HTTP, regardless of what client and server
@@ -327,16 +350,32 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if !fp.hideVia {
 			r.Header.Add("Via", strconv.Itoa(r.ProtoMajor)+"."+strconv.Itoa(r.ProtoMinor)+" caddy")
 		}
-		response, err := fp.httpTransport.RoundTrip(r)
-		if err != nil {
-			if response != nil {
-				if response.StatusCode != 0 {
-					return response.StatusCode, errors.New("failed to do RoundTrip(): " + err.Error())
+		if fp.outgoing.IPs != nil {
+			addrIP := SelectOutgoing(fp, r)
+			addr, _ := net.ResolveTCPAddr("tcp", addrIP+":0")
+			var transport = &http.Transport{DialContext: (&net.Dialer{LocalAddr: addr, Timeout: fp.dialTimeout}).DialContext}
+			response, err := transport.RoundTrip(r)
+			if err != nil {
+				if response != nil {
+					if response.StatusCode != 0 {
+						return response.StatusCode, errors.New("failed to do RoundTrip(): " + err.Error())
+					}
 				}
+				return http.StatusBadGateway, errors.New("failed to do RoundTrip(): " + err.Error())
 			}
-			return http.StatusBadGateway, errors.New("failed to do RoundTrip(): " + err.Error())
+			return 0, forwardResponse(w, response)
+		} else {
+			response, err := fp.httpTransport.RoundTrip(r)
+			if err != nil {
+				if response != nil {
+					if response.StatusCode != 0 {
+						return response.StatusCode, errors.New("failed to do RoundTrip(): " + err.Error())
+					}
+				}
+				return http.StatusBadGateway, errors.New("failed to do RoundTrip(): " + err.Error())
+			}
+			return 0, forwardResponse(w, response)
 		}
-		return 0, forwardResponse(w, response)
 	}
 }
 
@@ -417,13 +456,16 @@ func flushingIoCopy(dst io.Writer, src io.Reader, buf []byte) (written int64, er
 }
 
 //Function to select outgoing IP based on policy
-func SelectOutgoing(fp *ForwardProxy, r *http.Request) net.IPAddr {
+func SelectOutgoing(fp *ForwardProxy, r *http.Request) string {
 	pool := fp.outgoing.IPs
 	if len(pool) == 1 {
+		//println("only 1 IP for outgoing")
 		return pool[0]
 	}
-	if fp.outgoing.policy != nil {
+	if fp.outgoing.policy == nil {
+		println("default random selected")
 		return (&Random{}).Select(pool, r)
 	}
+	//println("%s policy selected", fp.outgoing.policy)
 	return fp.outgoing.policy.Select(pool, r)
 }
