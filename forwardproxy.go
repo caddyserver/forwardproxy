@@ -279,30 +279,55 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if fp.useProxy {
 
 		}
-		addrIP := SelectOutgoing(fp, r)
-		addr, _ := net.ResolveTCPAddr("tcp", addrIP+":0")
-		d := &net.Dialer{LocalAddr: addr, Timeout: fp.dialTimeout}
-		targetConn, err := d.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
-		if err != nil {
-			return http.StatusBadGateway, fmt.Errorf("Dial %s failed: %v", r.URL.String(), err)
-		}
-		defer targetConn.Close()
-
-		switch r.ProtoMajor {
-		case 1: // http1: hijack the whole flow
-			return serveHijack(w, targetConn)
-		case 2: // http2: keep reading from "request" and writing into same response
-			defer r.Body.Close()
-			wFlusher, ok := w.(http.Flusher)
-			if !ok {
-				return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+		if fp.outgoing.IPs != nil {
+			addrIP := SelectOutgoing(fp, r)
+			addr, _ := net.ResolveTCPAddr("tcp", addrIP+":0")
+			d := &net.Dialer{LocalAddr: addr, Timeout: fp.dialTimeout}
+			targetConn, err := d.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
+			if err != nil {
+				return http.StatusBadGateway, fmt.Errorf("Dial %s failed: %v", r.URL.String(), err)
 			}
-			w.WriteHeader(http.StatusOK)
-			wFlusher.Flush()
-			return 0, dualStream(targetConn, r.Body, w, targetConn)
-		default:
-			panic("There was a check for http version, yet it's incorrect")
+			defer targetConn.Close()
+
+			switch r.ProtoMajor {
+			case 1: // http1: hijack the whole flow
+				return serveHijack(w, targetConn)
+			case 2: // http2: keep reading from "request" and writing into same response
+				defer r.Body.Close()
+				wFlusher, ok := w.(http.Flusher)
+				if !ok {
+					return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+				}
+				w.WriteHeader(http.StatusOK)
+				wFlusher.Flush()
+				return 0, dualStream(targetConn, r.Body, w, targetConn)
+			default:
+				panic("There was a check for http version, yet it's incorrect")
+			}
+		} else {
+			targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
+			if err != nil {
+				return http.StatusBadGateway, fmt.Errorf("Dial %s failed: %v", r.URL.String(), err)
+			}
+			defer targetConn.Close()
+
+			switch r.ProtoMajor {
+			case 1: // http1: hijack the whole flow
+				return serveHijack(w, targetConn)
+			case 2: // http2: keep reading from "request" and writing into same response
+				defer r.Body.Close()
+				wFlusher, ok := w.(http.Flusher)
+				if !ok {
+					return http.StatusInternalServerError, errors.New("ResponseWriter doesn't implement Flusher()")
+				}
+				w.WriteHeader(http.StatusOK)
+				wFlusher.Flush()
+				return 0, dualStream(targetConn, r.Body, w, targetConn)
+			default:
+				panic("There was a check for http version, yet it's incorrect")
+			}
 		}
+
 	} else {
 		// Scheme has to be appended to avoid `unsupported protocol scheme ""` error.
 		// `http://` is used, since this initial request itself is always HTTP, regardless of what client and server
@@ -325,16 +350,32 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if !fp.hideVia {
 			r.Header.Add("Via", strconv.Itoa(r.ProtoMajor)+"."+strconv.Itoa(r.ProtoMinor)+" caddy")
 		}
-		response, err := fp.httpTransport.RoundTrip(r)
-		if err != nil {
-			if response != nil {
-				if response.StatusCode != 0 {
-					return response.StatusCode, errors.New("failed to do RoundTrip(): " + err.Error())
+		if fp.outgoing.IPs != nil {
+			addrIP := SelectOutgoing(fp, r)
+			addr, _ := net.ResolveTCPAddr("tcp", addrIP+":0")
+			var transport = &http.Transport{DialContext: (&net.Dialer{LocalAddr: addr, Timeout: fp.dialTimeout}).DialContext}
+			response, err := transport.RoundTrip(r)
+			if err != nil {
+				if response != nil {
+					if response.StatusCode != 0 {
+						return response.StatusCode, errors.New("failed to do RoundTrip(): " + err.Error())
+					}
 				}
+				return http.StatusBadGateway, errors.New("failed to do RoundTrip(): " + err.Error())
 			}
-			return http.StatusBadGateway, errors.New("failed to do RoundTrip(): " + err.Error())
+			return 0, forwardResponse(w, response)
+		} else {
+			response, err := fp.httpTransport.RoundTrip(r)
+			if err != nil {
+				if response != nil {
+					if response.StatusCode != 0 {
+						return response.StatusCode, errors.New("failed to do RoundTrip(): " + err.Error())
+					}
+				}
+				return http.StatusBadGateway, errors.New("failed to do RoundTrip(): " + err.Error())
+			}
+			return 0, forwardResponse(w, response)
 		}
-		return 0, forwardResponse(w, response)
 	}
 }
 
