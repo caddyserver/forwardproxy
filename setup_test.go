@@ -15,8 +15,9 @@
 package forwardproxy
 
 import (
-	"github.com/mholt/caddy"
 	"testing"
+
+	"github.com/mholt/caddy"
 )
 
 func TestSetup(t *testing.T) {
@@ -111,4 +112,5 @@ func TestSetup(t *testing.T) {
 	testParsing([]string{"dial_timeout 1 2"}, false)
 	testParsing([]string{"dial_timeout seven"}, false)
 	testParsing([]string{"dial_timeout 2"}, true)
+	testParsing([]string{"outgoing {\nips 10.3.75.35 10.3.75.51 10.3.75.59\npolicy ip_hash\n}"}, true)
 }

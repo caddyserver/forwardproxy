@@ -158,13 +158,14 @@ func setup(c *caddy.Controller) error {
 			}
 			for c.Next() {
 				for c.NextBlock() {
-					switch c.Val() {
+					testval := c.Val()
+					outargs := c.RemainingArgs()
+					switch testval {
 					case "ips":
-						if !c.NextArg() {
-							return c.ArgErr()
-						}
-						fp.outgoing.IPs = make([]net.IPAddr, len(c.Val()))
-						for i, p := range args {
+						//testval := c.Val()
+						//println(testval)
+						fp.outgoing.IPs = make([]net.IPAddr, len(outargs))
+						for i, p := range outargs {
 							outgoingIP := net.ParseIP(p)
 							if outgoingIP == nil {
 								return errors.New("Parse error: not an IP address " + p + ".")
@@ -172,10 +173,7 @@ func setup(c *caddy.Controller) error {
 							fp.outgoing.IPs[i] = net.IPAddr{IP: outgoingIP, Zone: ""}
 						}
 					case "policy":
-						if !c.NextArg() {
-							return c.ArgErr()
-						}
-						policyCreateFunc, ok := supportedPolicies[c.Val()]
+						policyCreateFunc, ok := supportedPolicies[outargs[0]]
 						if !ok {
 							return c.ArgErr()
 						}
