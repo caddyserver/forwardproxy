@@ -47,7 +47,7 @@ type ForwardProxy struct {
 	hostname           string        // do not intercept requests to the hostname (except for hidden link)
 	port               string        // port on which chain with forwardproxy is listening on
 	outgoing           struct {
-		IPs    []net.IPAddr
+		IPs    []string
 		policy Policy
 	}
 }
@@ -280,11 +280,8 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 
 		}
 		addrIP := SelectOutgoing(fp, r)
-		//ip := net.ParseIP("10.145.29.61")
-		//addr := &net.IPAddr{IP: ip, Zone: ""}
-		addr, _ := net.ResolveTCPAddr("tcp", addrIP.IP.String()+":0")
+		addr, _ := net.ResolveTCPAddr("tcp", addrIP+":0")
 		d := &net.Dialer{LocalAddr: addr, Timeout: fp.dialTimeout}
-		//targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
 		targetConn, err := d.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
 		if err != nil {
 			return http.StatusBadGateway, fmt.Errorf("Dial %s failed: %v", r.URL.String(), err)
@@ -418,7 +415,7 @@ func flushingIoCopy(dst io.Writer, src io.Reader, buf []byte) (written int64, er
 }
 
 //Function to select outgoing IP based on policy
-func SelectOutgoing(fp *ForwardProxy, r *http.Request) net.IPAddr {
+func SelectOutgoing(fp *ForwardProxy, r *http.Request) string {
 	pool := fp.outgoing.IPs
 	if len(pool) == 1 {
 		return pool[0]

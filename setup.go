@@ -164,13 +164,13 @@ func setup(c *caddy.Controller) error {
 					case "ips":
 						//testval := c.Val()
 						//println(testval)
-						fp.outgoing.IPs = make([]net.IPAddr, len(outargs))
+						fp.outgoing.IPs = make([]string, len(outargs))
 						for i, p := range outargs {
 							outgoingIP := net.ParseIP(p)
 							if outgoingIP == nil {
 								return errors.New("Parse error: not an IP address " + p + ".")
 							}
-							fp.outgoing.IPs[i] = net.IPAddr{IP: outgoingIP, Zone: ""}
+							fp.outgoing.IPs[i] = outgoingIP.String()
 						}
 					case "policy":
 						policyCreateFunc, ok := supportedPolicies[outargs[0]]
