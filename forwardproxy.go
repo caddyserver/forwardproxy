@@ -459,13 +459,13 @@ func flushingIoCopy(dst io.Writer, src io.Reader, buf []byte) (written int64, er
 func SelectOutgoing(fp *ForwardProxy, r *http.Request) string {
 	pool := fp.outgoing.IPs
 	if len(pool) == 1 {
-		println("only 1 IP for outgoing")
+		//println("only 1 IP for outgoing")
 		return pool[0]
 	}
 	if fp.outgoing.policy == nil {
 		println("default random selected")
 		return (&Random{}).Select(pool, r)
 	}
-	println("%s policy selected", fp.outgoing.policy)
+	//println("%s policy selected", fp.outgoing.policy)
 	return fp.outgoing.policy.Select(pool, r)
 }
