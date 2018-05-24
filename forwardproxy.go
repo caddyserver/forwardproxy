@@ -279,10 +279,11 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if fp.useProxy {
 
 		}
-		addr := SelectOutgoing(fp, r)
+		addrIP := SelectOutgoing(fp, r)
 		//ip := net.ParseIP("10.145.29.61")
 		//addr := &net.IPAddr{IP: ip, Zone: ""}
-		d := &net.Dialer{LocalAddr: &addr, Timeout: fp.dialTimeout}
+		addr, _ := net.ResolveTCPAddr("tcp", addrIP.IP.String()+":0")
+		d := &net.Dialer{LocalAddr: addr, Timeout: fp.dialTimeout}
 		//targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
 		targetConn, err := d.Dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
 		if err != nil {
