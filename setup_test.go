@@ -113,4 +113,6 @@ func TestSetup(t *testing.T) {
 	testParsing([]string{"dial_timeout seven"}, false)
 	testParsing([]string{"dial_timeout 2"}, true)
 	testParsing([]string{"outgoing {\nips 10.3.75.35 10.3.75.51 10.3.75.59\npolicy ip_hash\n}"}, true)
+	testParsing([]string{"outgoing {\n}"}, true)
+	testParsing([]string{"outgoing "}, true)
 }
