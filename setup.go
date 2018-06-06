@@ -28,7 +28,7 @@ import (
 
 	"github.com/mholt/caddy"
 	"github.com/mholt/caddy/caddyhttp/httpserver"
-	"github.com/yaproxy/libyap/proxy"
+	"golang.org/x/net/proxy"
 )
 
 func setup(c *caddy.Controller) error {
@@ -188,7 +188,7 @@ func setup(c *caddy.Controller) error {
 				KeepAlive: 30 * time.Second,
 				DualStack: true,
 			}
-			newDialer, err := proxy.FromURL(fixedURL, dialer, nil)
+			newDialer, err := proxy.FromURL(fixedURL, dialer)
 			if err != nil {
 				return errors.New("wrong upstream address")
 			}
