@@ -22,10 +22,10 @@ import (
 	"sync"
 )
 
-// HostPool is a collection of UpstreamHosts.
+// HostPool is a collection of Outgoing IP addresses.
 type HostPool []string
 
-// Policy decides how a host will be selected from a pool.
+// Policy decides how an address will be selected from a pool.
 type Policy interface {
 	Select(pool HostPool, r *http.Request) string
 }
@@ -34,27 +34,18 @@ func init() {
 	RegisterPolicy("random", func(arg string) Policy { return &Random{} })
 	RegisterPolicy("round_robin", func(arg string) Policy { return &RoundRobin{} })
 	RegisterPolicy("ip_hash", func(arg string) Policy { return &IPHash{} })
-	RegisterPolicy("first", func(arg string) Policy { return &First{} })
-	RegisterPolicy("uri_hash", func(arg string) Policy { return &URIHash{} })
-	RegisterPolicy("header", func(arg string) Policy { return &Header{arg} })
 }
 
-// Random is a policy that selects up hosts from a pool at random.
+// Random is a policy that selects an address from a pool at random.
 type Random struct{}
 
-// Select selects an up host at random from the specified pool.
+// Select selects an an address at random from the specified pool.
 func (r *Random) Select(pool HostPool, request *http.Request) string {
 
-	// Because the number of available hosts isn't known
-	// up front, the host is selected via reservoir sampling
-	// https://en.wikipedia.org/wiki/Reservoir_sampling
 	var randHost string
 	count := 0
 	for _, host := range pool {
 
-		// (n % 1 == 0) holds for all n, therefore randHost
-		// will always get assigned a value if there is
-		// at least 1 available host
 		count++
 		if (rand.Int() % count) == 0 {
 			randHost = host
@@ -63,13 +54,13 @@ func (r *Random) Select(pool HostPool, request *http.Request) string {
 	return randHost
 }
 
-// RoundRobin is a policy that selects hosts based on round-robin ordering.
+// RoundRobin is a policy that selects an address based on round-robin ordering.
 type RoundRobin struct {
 	robin uint32
 	mutex sync.Mutex
 }
 
-// Select selects an up host from the pool using a round-robin ordering scheme.
+// Select selects an an address from the pool using a round-robin ordering scheme.
 func (r *RoundRobin) Select(pool HostPool, request *http.Request) string {
 	poolLen := uint32(len(pool))
 	r.mutex.Lock()
@@ -83,7 +74,7 @@ func (r *RoundRobin) Select(pool HostPool, request *http.Request) string {
 	return "127.0.0.1"
 }
 
-// hostByHashing returns an available host from pool based on a hashable string
+// hostByHashing returns an address from pool based on a hashable string
 func hostByHashing(pool HostPool, s string) string {
 	poolLen := uint32(len(pool))
 	index := hash(s) % poolLen
@@ -102,10 +93,10 @@ func hash(s string) uint32 {
 	return h.Sum32()
 }
 
-// IPHash is a policy that selects hosts based on hashing the request IP
+// IPHash is a policy that selects an address based on hashing the request IP
 type IPHash struct{}
 
-// Select selects an up host from the pool based on hashing the request IP
+// Select selects an an address from the pool based on hashing the request and destination IP
 func (r *IPHash) Select(pool HostPool, request *http.Request) string {
 	clientIP, _, err := net.SplitHostPort(request.RemoteAddr)
 	if err != nil {
@@ -116,42 +107,4 @@ func (r *IPHash) Select(pool HostPool, request *http.Request) string {
 		remoteIP = request.Host
 	}
 	return hostByHashing(pool, clientIP+remoteIP)
-}
-
-// URIHash is a policy that selects the host based on hashing the request URI
-type URIHash struct{}
-
-// Select selects the host based on hashing the URI
-func (r *URIHash) Select(pool HostPool, request *http.Request) string {
-	return hostByHashing(pool, request.RequestURI)
-}
-
-// First is a policy that selects the first available host
-type First struct{}
-
-// Select selects the first available host from the pool
-func (r *First) Select(pool HostPool, request *http.Request) string {
-	for _, host := range pool {
-		return host
-	}
-	return "127.0.0.1"
-}
-
-// Header is a policy that selects based on a hash of the given header
-type Header struct {
-	// The name of the request header, the value of which will determine
-	// how the request is routed
-	Name string
-}
-
-// Select selects the host based on hashing the header value
-func (r *Header) Select(pool HostPool, request *http.Request) string {
-	if r.Name == "" {
-		return "127.0.0.1"
-	}
-	val := request.Header.Get(r.Name)
-	if val == "" {
-		return "127.0.0.1"
-	}
-	return hostByHashing(pool, val)
 }
