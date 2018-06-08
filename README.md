@@ -70,7 +70,7 @@ Sets the outgoing ips and load balancing policy to use.
 Sets the ip(s) to use for outgoing connections
 
 - **policy [struct]**
-Sets the load balancing policy for outgoing connections.  Options are ip_hash, random, first, round_robin, and uri_hash.
+Sets the load balancing policy for outgoing connections.  Options are ip_hash(of both source and destination), random, and round_robin.
 _Default: random_
 
 ## Client Configuration
