@@ -12,7 +12,7 @@ import (
 
 func TestGETAuthCorrectProbeResist(t *testing.T) {
 	useTls := true
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpTargetVer := range testHTTPVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyProbeResist.addr, httpTargetVer, credentialsCorrect, useTls)
 			if err != nil {
@@ -27,7 +27,7 @@ func TestGETAuthCorrectProbeResist(t *testing.T) {
 func TestGETAuthWrongProbeResist(t *testing.T) {
 	useTls := true
 	for _, wrongCreds := range credentialsWrong {
-		for _, httpTargetVer := range testHttpVersions {
+		for _, httpTargetVer := range testHTTPVersions {
 			for _, resource := range testResources {
 				responseProbeResist, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyProbeResist.addr, httpTargetVer, wrongCreds, useTls)
 				if err != nil {
@@ -88,7 +88,7 @@ func TestGETAuthWrongProbeResist(t *testing.T) {
 func TestGETAuthWrongProbeResistRedir(t *testing.T) {
 	useTls := false
 	for _, wrongCreds := range credentialsWrong {
-		for _, httpTargetVer := range testHttpVersions {
+		for _, httpTargetVer := range testHTTPVersions {
 			// request test target
 			for _, resource := range testResources {
 				responseProbeResist, err := getViaProxy(caddyTestTarget.addr, resource, stripPort(caddyForwardProxyProbeResist.addr)+":"+caddyForwardProxyProbeResist.HTTPRedirectPort,
@@ -137,8 +137,8 @@ func TestGETAuthWrongProbeResistRedir(t *testing.T) {
 
 func TestConnectAuthCorrectProbeResist(t *testing.T) {
 	useTls := true
-	for _, httpProxyVer := range testHttpVersions {
-		for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHTTPVersions {
+		for _, httpTargetVer := range testHTTPVersions {
 			for _, resource := range testResources {
 				response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyProbeResist.addr, httpTargetVer, credentialsCorrect, httpProxyVer, useTls)
 				if err != nil {
@@ -154,8 +154,8 @@ func TestConnectAuthCorrectProbeResist(t *testing.T) {
 func TestConnectAuthWrongProbeResist(t *testing.T) {
 	useTls := true
 	for _, wrongCreds := range credentialsWrong {
-		for _, httpProxyVer := range testHttpVersions {
-			for _, httpTargetVer := range testHttpVersions {
+		for _, httpProxyVer := range testHTTPVersions {
+			for _, httpTargetVer := range testHTTPVersions {
 				for _, resource := range testResources {
 					responseProbeResist, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyProbeResist.addr, httpTargetVer, wrongCreds, httpProxyVer, useTls)
 					if err != nil {
@@ -218,8 +218,8 @@ func TestConnectAuthWrongProbeResist(t *testing.T) {
 func TestConnectAuthWrongProbeResistRedir(t *testing.T) {
 	useTls := false
 	for _, wrongCreds := range credentialsWrong {
-		for _, httpProxyVer := range testHttpVersions {
-			for _, httpTargetVer := range testHttpVersions {
+		for _, httpProxyVer := range testHTTPVersions {
+			for _, httpTargetVer := range testHTTPVersions {
 				// request test target
 				for _, resource := range testResources {
 					responseProbeResist, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, stripPort(caddyForwardProxyProbeResist.addr)+":"+caddyForwardProxyProbeResist.HTTPRedirectPort,
