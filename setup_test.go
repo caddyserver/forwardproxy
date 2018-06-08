@@ -111,4 +111,8 @@ func TestSetup(t *testing.T) {
 	testParsing([]string{"dial_timeout 1 2"}, false)
 	testParsing([]string{"dial_timeout seven"}, false)
 	testParsing([]string{"dial_timeout 2"}, true)
+
+	testParsing([]string{"upstream proxy.site"}, false)
+	testParsing([]string{"upstream https://proxy.site https://proxy.site"}, false)
+	testParsing([]string{"upstream https://proxy.site"}, true)
 }

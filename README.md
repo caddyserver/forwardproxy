@@ -13,7 +13,7 @@ Open a block for more control; here's an example of all properties in use (note 
 ```
 forwardproxy {
     basicauth user1 0NtCL2JPJBgPPMmlPcJ
-    basicauth user2 秘密
+    basicauth user2 密码
     ports     80 443
     hide_ip
     probe_resistance secretlink.localhost
@@ -59,6 +59,9 @@ _Default: no timeout (other timeouts will eventually close the connection)._
 Sets timeout (in seconds) for establishing TCP connection to target website. Affects all requests.  
 _Default: 20 seconds._
 
+- **upstream [https://username:password@proxy.site]**
+Sets upstream proxy for establishing TCP connection to target website. Affects all requests.
+_Default: no upstream proxy._
 
 ## Client Configuration
 

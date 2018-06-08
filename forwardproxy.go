@@ -45,6 +45,9 @@ type ForwardProxy struct {
 	dialTimeout        time.Duration // for initial tcp connection
 	hostname           string        // do not intercept requests to the hostname (except for hidden link)
 	port               string        // port on which chain with forwardproxy is listening on
+
+	upstream string                                          // upstream store the upstream server addr
+	dial     func(network, address string) (net.Conn, error) // when upstream is not empty, should customize dial function
 }
 
 var bufferPool sync.Pool
@@ -263,7 +266,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			return http.StatusForbidden, errors.New("CONNECT port not allowed for " + r.URL.String())
 		}
 
-		targetConn, err := net.DialTimeout("tcp", r.URL.Hostname()+":"+r.URL.Port(), fp.dialTimeout)
+		targetConn, err := fp.dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
 		if err != nil {
 			return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
 		}

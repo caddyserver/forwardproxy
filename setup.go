@@ -17,15 +17,18 @@ package forwardproxy
 import (
 	"encoding/base64"
 	"errors"
-	"github.com/mholt/caddy"
-	"github.com/mholt/caddy/caddyhttp/httpserver"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mholt/caddy"
+	"github.com/mholt/caddy/caddyhttp/httpserver"
+	"golang.org/x/net/proxy"
 )
 
 func setup(c *caddy.Controller) error {
@@ -151,6 +154,11 @@ func setup(c *caddy.Controller) error {
 				return errors.New("Parse error: dial_timeout cannot be negative.")
 			}
 			fp.dialTimeout = time.Second * time.Duration(timeout)
+		case "upstream":
+			if len(args) != 1 {
+				return c.ArgErr()
+			}
+			fp.upstream = args[0]
 		default:
 			return c.ArgErr()
 		}
@@ -165,11 +173,41 @@ func setup(c *caddy.Controller) error {
 		}
 	}
 
-	fp.httpTransport.DialContext = (&net.Dialer{
-		Timeout:   fp.dialTimeout,
-		KeepAlive: 30 * time.Second,
-		DualStack: true,
-	}).DialContext
+	if fp.upstream != "" {
+		fixedURL, err := url.Parse(fp.upstream)
+		if err != nil {
+			return errors.New("wrong upstream address")
+		}
+		switch fixedURL.Scheme {
+		case "http":
+			fp.httpTransport.Proxy = http.ProxyURL(fixedURL)
+			fallthrough
+		default:
+			dialer := &net.Dialer{
+				Timeout:   fp.dialTimeout,
+				KeepAlive: 30 * time.Second,
+				DualStack: true,
+			}
+			newDialer, err := proxy.FromURL(fixedURL, dialer)
+			if err != nil {
+				return errors.New("wrong upstream address")
+			}
+			fp.dial = newDialer.Dial
+			fp.httpTransport.Dial = newDialer.Dial
+		}
+	} else {
+		fp.dial = (&net.Dialer{
+			Timeout:   fp.dialTimeout,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).Dial
+
+		fp.httpTransport.DialContext = (&net.Dialer{
+			Timeout:   fp.dialTimeout,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext
+	}
 
 	httpserver.GetConfig(c).AddMiddleware(func(next httpserver.Handler) httpserver.Handler {
 		fp.Next = next
