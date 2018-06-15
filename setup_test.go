@@ -15,8 +15,9 @@
 package forwardproxy
 
 import (
-	"github.com/mholt/caddy"
 	"testing"
+
+	"github.com/mholt/caddy"
 )
 
 func TestSetup(t *testing.T) {
@@ -111,4 +112,12 @@ func TestSetup(t *testing.T) {
 	testParsing([]string{"dial_timeout 1 2"}, false)
 	testParsing([]string{"dial_timeout seven"}, false)
 	testParsing([]string{"dial_timeout 2"}, true)
+
+	testParsing([]string{"upstream proxy.site"}, false)
+	testParsing([]string{"upstream https://proxy.site https://proxy.site"}, false)
+	testParsing([]string{"upstream http://localhost:1230"}, true)
+	testParsing([]string{"upstream socks5://127.0.0.1:999"}, true)
+	testParsing([]string{"upstream http://proxy.site"}, false)
+	testParsing([]string{"upstream https://proxy.site https://proxy.site"}, false)
+	testParsing([]string{"upstream https://proxy.site"}, true)
 }

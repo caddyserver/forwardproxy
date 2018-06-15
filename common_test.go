@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
-	"github.com/mholt/caddy"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -13,10 +12,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mholt/caddy"
 )
 
 var credentialsEmpty = ""
-var credentialsCorrect = "Basic dGVzdDpwYXNz" // test:pass
+var credentialsCorrect = "Basic dGVzdDpwYXNz"                                 // test:pass
+var credentialsUpstreamCorrect = "basic dXBzdHJlYW10ZXN0OnVwc3RyZWFtcGFzcw==" // upstreamtest:upstreampass
 var credentialsWrong = []string{
 	"",
 	"\"\"",
@@ -53,7 +55,12 @@ var (
 	caddyForwardProxyAuth        caddyTestServer // requires auth
 	caddyForwardProxyProbeResist caddyTestServer // requires auth, and has probing resistance on
 	caddyDummyProbeResist        caddyTestServer // same as caddyForwardProxyProbeResist, but w/o forwardproxy
-	caddyTestTarget              caddyTestServer
+
+	// authenticated server upstreams to authenticated https proxy with different credentials
+	caddyAuthedUpstreamEnter caddyTestServer
+
+	caddyTestTarget     caddyTestServer
+	caddyHTTPTestTarget caddyTestServer
 )
 
 func (c *caddyTestServer) marshal() []byte {
@@ -137,6 +144,17 @@ func TestMain(m *testing.M) {
 		proxyEnabled: false}
 	caddyTestTarget.StartTestServer()
 
+	caddyHTTPTestTarget = caddyTestServer{addr: "localhost:6480", root: "./test/index",
+		directives:   []string{"tls off"},
+		proxyEnabled: false}
+	caddyHTTPTestTarget.StartTestServer()
+
+	caddyAuthedUpstreamEnter = caddyTestServer{addr: "127.0.0.1:6585", root: "./test/upstreamingproxy",
+		directives:   []string{"tls self_signed"},
+		proxyEnabled: true, proxyDirectives: []string{"upstream https://test:pass@127.0.0.1:4891",
+			"basicauth upstreamtest upstreampass"}}
+	caddyAuthedUpstreamEnter.StartTestServer()
+
 	retCode := m.Run()
 
 	caddyForwardProxy.Stop()
@@ -144,6 +162,8 @@ func TestMain(m *testing.M) {
 	caddyForwardProxyProbeResist.Stop()
 	caddyDummyProbeResist.Stop()
 	caddyTestTarget.Stop()
+	caddyHTTPTestTarget.Stop()
+	caddyAuthedUpstreamEnter.Stop()
 
 	os.Exit(retCode)
 }
