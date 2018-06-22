@@ -62,22 +62,29 @@ func setup(c *caddy.Controller) error {
 		args := c.RemainingArgs()
 		switch subdirective {
 		case "basicauth":
-			if len(args) != 2 {
+			var user string
+			var pass string
+			switch len(args) {
+			case 1:
+				user = args[0]
+			case 2:
+				user = args[0]
+				pass = args[1]
+			default:
 				return c.ArgErr()
 			}
-			if len(args[0]) == 0 {
+			if len(user) == 0 {
 				return errors.New("Parse error: empty usernames are not allowed")
 			}
-			// TODO: Evaluate policy of allowing empty passwords.
-			if strings.Contains(args[0], ":") {
+			if strings.Contains(user, ":") {
 				return errors.New("Parse error: character ':' in usernames is not allowed")
 			}
 			if fp.authCredentials == nil {
 				fp.authCredentials = [][]byte{}
 			}
 			// base64-encode credentials
-			buf := make([]byte, base64.StdEncoding.EncodedLen(len(args[0])+1+len(args[1])))
-			base64.StdEncoding.Encode(buf, []byte(args[0]+":"+args[1]))
+			buf := make([]byte, base64.StdEncoding.EncodedLen(len(user)+1+len(pass)))
+			base64.StdEncoding.Encode(buf, []byte(user+":"+pass))
 			fp.authCredentials = append(fp.authCredentials, buf)
 			fp.authRequired = true
 		case "ports":
