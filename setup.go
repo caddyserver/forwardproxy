@@ -33,21 +33,14 @@ import (
 	"github.com/mholt/caddy"
 	"github.com/mholt/caddy/caddyhttp/httpserver"
 	"golang.org/x/net/proxy"
+	"os"
 )
 
 func setup(c *caddy.Controller) error {
 	httpserver.GetConfig(c).FallbackSite = true
-	fp := &ForwardProxy{dialTimeout: time.Second * 20,
-		hostname: httpserver.GetConfig(c).Host(), port: httpserver.GetConfig(c).Port(),
-		httpTransport: http.Transport{
-			Proxy:                 http.ProxyFromEnvironment,
-			MaxIdleConns:          100,
-			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		}}
-	fp.httpTransport.DialTLS = func(network, addr string) (net.Conn, error) {
-		return nil, &http.ProtocolError{ErrorString: "Proxy does not fetch TLS resources, use CONNECT instead"}
+	fp := &ForwardProxy{
+		dialTimeout: time.Second * 20,
+		hostname:    httpserver.GetConfig(c).Host(), port: httpserver.GetConfig(c).Port(),
 	}
 
 	c.Next() // skip the directive name
@@ -66,11 +59,11 @@ func setup(c *caddy.Controller) error {
 				return c.ArgErr()
 			}
 			if len(args[0]) == 0 {
-				return errors.New("Parse error: empty usernames are not allowed")
+				return c.Err("empty usernames are not allowed")
 			}
 			// TODO: Evaluate policy of allowing empty passwords.
 			if strings.Contains(args[0], ":") {
-				return errors.New("Parse error: character ':' in usernames is not allowed")
+				return c.Err("character ':' in usernames is not allowed")
 			}
 			if fp.authCredentials == nil {
 				fp.authCredentials = [][]byte{}
@@ -85,13 +78,13 @@ func setup(c *caddy.Controller) error {
 				return c.ArgErr()
 			}
 			if len(fp.whitelistedPorts) != 0 {
-				return errors.New("Parse error: ports subdirective specified twice")
+				return c.Err("ports subdirective specified twice")
 			}
 			fp.whitelistedPorts = make([]int, len(args))
 			for i, p := range args {
 				intPort, err := strconv.Atoi(p)
 				if intPort <= 0 || intPort > 65535 || err != nil {
-					return errors.New("Parse error: ports are expected to be space-separated" +
+					return c.Err("ports are expected to be space-separated" +
 						" and in 0-65535 range. Got: " + p)
 				}
 				fp.whitelistedPorts[i] = intPort
@@ -123,7 +116,7 @@ func setup(c *caddy.Controller) error {
 				return c.ArgErr()
 			}
 			if len(fp.pacFilePath) != 0 {
-				return errors.New("Parse error: serve_pac subdirective specified twice")
+				return c.Err("serve_pac subdirective specified twice")
 			}
 			if len(args) == 1 {
 				fp.pacFilePath = args[0]
@@ -143,9 +136,10 @@ func setup(c *caddy.Controller) error {
 				return c.ArgErr()
 			}
 			if timeout < 0 {
-				return errors.New("Parse error: response_timeout cannot be negative.")
+				return c.Err("response_timeout cannot be negative.")
 			}
-			fp.httpTransport.ResponseHeaderTimeout = time.Second * time.Duration(timeout)
+			responseTimeout := time.Duration(timeout) * time.Second
+			fp.responseTimeout = &responseTimeout
 		case "dial_timeout":
 			if len(args) != 1 {
 				return c.ArgErr()
@@ -155,7 +149,7 @@ func setup(c *caddy.Controller) error {
 				return c.ArgErr()
 			}
 			if timeout < 0 {
-				return errors.New("Parse error: dial_timeout cannot be negative.")
+				return c.Err("dial_timeout cannot be negative.")
 			}
 			fp.dialTimeout = time.Second * time.Duration(timeout)
 		case "upstream":
@@ -163,14 +157,97 @@ func setup(c *caddy.Controller) error {
 				return c.ArgErr()
 			}
 			fp.upstream = args[0]
+		case "acl":
+			if len(args) != 0 {
+				return c.Err("acl should be only subdirective on the line")
+			}
+			args := c.RemainingArgs()
+			if len(args) > 0 {
+				return c.ArgErr()
+			}
+			c.Next()
+			if c.Val() != "{" {
+				return c.Err("acl directive must be followed by opening curly braces \"{\"")
+			}
+			for {
+				if !c.Next() {
+					return c.Err("acl blockmust be ended by closing curly braces \"}\"")
+				}
+				aclDirective := c.Val()
+				args := c.RemainingArgs()
+				if aclDirective == "}" {
+					break
+				}
+				if len(args) == 0 {
+					return c.ArgErr()
+				}
+				var ruleSubjects []string
+				var err error
+				aclAllow := false
+				switch aclDirective {
+				case "allow":
+					ruleSubjects = args[:]
+					aclAllow = true
+				case "allowfile":
+					if len(args) != 1 {
+						return c.Err("allowfile accepts a single filename argument")
+					}
+					ruleSubjects, err = readLinesFromFile(args[0])
+					if err != nil {
+						return err
+					}
+					aclAllow = true
+				case "deny":
+					ruleSubjects = args[:]
+				case "denyfile":
+					if len(args) != 1 {
+						return c.Err("denyfile accepts a single filename argument")
+					}
+					ruleSubjects, err = readLinesFromFile(args[0])
+					if err != nil {
+						return err
+					}
+				default:
+					return c.Err("expected acl directive: allow/allowfile/deny/denyfile." +
+						"got: " + aclDirective)
+				}
+				for _, rs := range ruleSubjects {
+					ar, err := newAclRule(rs, aclAllow)
+					if err != nil {
+						return err
+					}
+					fp.aclRules = append(fp.aclRules, ar)
+				}
+			}
 		default:
 			return c.ArgErr()
 		}
 	}
 
+	if fp.upstream != "" && (fp.aclRules != nil || len(fp.whitelistedPorts) != 0) {
+		return c.Err("upstream subdirective is incompatible with acl/ports subdirectives")
+	}
+
+	for _, ipDeny := range []string{
+		"10.0.0.0/8",
+		"127.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"::1/128",
+		"fe80::/10",
+	} {
+		ar, err := newAclRule(ipDeny, false)
+		if err != nil {
+			panic(err)
+		}
+		fp.aclRules = append(fp.aclRules, ar)
+	}
+	fp.aclRules = append(fp.aclRules, &aclAllRule{allow: true})
+
 	if fp.probeResistEnabled {
 		if !fp.authRequired {
-			return errors.New("Parse error: probing resistance requires authentication")
+			return c.Err("probing resistance requires authentication: " +
+				"add `basicauth username password` to forwardproxy")
 		}
 		if len(fp.probeResistDomain) > 0 {
 			log.Printf("Secret domain used to connect to proxy: %s\n", fp.probeResistDomain)
@@ -183,13 +260,15 @@ func setup(c *caddy.Controller) error {
 		DualStack: true,
 	}
 
+	fp.dial = dialer.Dial
+
 	if fp.upstream != "" {
 		upstreamURL, err := url.Parse(fp.upstream)
 		if err != nil {
 			return errors.New("failed to parse upstream address: " + err.Error())
 		}
 
-		if !isLocalhost(upstreamURL) && upstreamURL.Scheme != "https" {
+		if !isLocalhost(upstreamURL.Hostname()) && upstreamURL.Scheme != "https" {
 			return errors.New("insecure schemes are only allowed to localhost upstreams")
 		}
 
@@ -208,10 +287,6 @@ func setup(c *caddy.Controller) error {
 			return errors.New("failed to create proxy to upstream: " + err.Error())
 		}
 		fp.dial = newDialer.Dial
-		fp.httpTransport.Dial = newDialer.Dial
-	} else {
-		fp.dial = dialer.Dial
-		fp.httpTransport.DialContext = dialer.DialContext
 	}
 
 	httpserver.GetConfig(c).AddMiddleware(func(next httpserver.Handler) httpserver.Handler {
@@ -246,8 +321,8 @@ func NewHTTPDialer(dialer *net.Dialer, useHTTPS bool, upstream *url.URL) *HTTPDi
 	}
 	if useHTTPS {
 		d.tlsConf = &tls.Config{ServerName: upstream.Hostname()}
-		if isLocalhost(upstream) {
-			log.Println("Localhost upstream detected, disabling verification of TLS ceritifcate")
+		if isLocalhost(upstream.Hostname()) {
+			log.Println("Localhost upstream detected, disabling verification of TLS certificate")
 			d.tlsConf.InsecureSkipVerify = true
 		}
 	}
@@ -285,10 +360,47 @@ func (d *HTTPDialer) Dial(network, addr string) (net.Conn, error) {
 	return c, nil
 }
 
-func isLocalhost(u *url.URL) bool {
-	if u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" ||
-		u.Hostname() == "::1" {
+func isLocalhost(hostname string) bool {
+	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
 		return true
 	}
 	return false
+}
+
+func readLinesFromFile(filename string) ([]string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var hostnames []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		hostnames = append(hostnames, scanner.Text())
+	}
+
+	return hostnames, scanner.Err()
+}
+
+// isValidDomainLite shamelessly rejects non-LDH names. returns nil if domains seems valid
+func isValidDomainLite(domain string) error {
+	for i := 0; i < len(domain); i++ {
+		c := domain[i]
+		if 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || c == '_' || '0' <= c && c <= '9' ||
+			c == '-' || c == '.' {
+			continue
+		}
+		return errors.New("character " + string(c) + " is not allowed")
+	}
+	sections := strings.Split(domain, ".")
+	for _, s := range sections {
+		if len(s) == 0 {
+			return errors.New("empty section between dots in domain name or trailing dot")
+		}
+		if len(s) > 63 {
+			return errors.New("domain name section is too long")
+		}
+	}
+	return nil
 }
