@@ -120,4 +120,18 @@ func TestSetup(t *testing.T) {
 	testParsing([]string{"upstream http://proxy.site"}, false)
 	testParsing([]string{"upstream https://proxy.site https://proxy.site"}, false)
 	testParsing([]string{"upstream https://proxy.site"}, true)
+	testParsing([]string{"upstream https://caddyserver.com", "acl {\nallow all\n}"}, false)
+	testParsing([]string{"upstream https://caddyserver.com", "ports 123"}, false)
+
+	testParsing([]string{"acl {\nallow all\n}"}, true)
+	testParsing([]string{"acl {\nallow localhost 128.32.22.1/32 1.1.1.1 caddyserver.com\n deny all\n}"}, true)
+	testParsing([]string{"acl {\nallowfile test/parseable_acl.txt\n}"}, true)
+	testParsing([]string{"acl {\ndenyfile test/parseable_acl.txt\n}"}, true)
+	testParsing([]string{"acl {\nallowfile test/unparseable_acl.txt\n}"}, false)
+	testParsing([]string{"acl {\ndenyfile test/unparseable_acl.txt\n}"}, false)
+	//testParsing([]string{"acl {\nallow all\n"}, false) // doesn't fail, but should: caddy itself doesn't demand curly brace to be closed
+	testParsing([]string{"acl {\nallow all\n", "serve_pac"}, false) // this does fail
+	testParsing([]string{"acl \nallow all\n}"}, false)
+	testParsing([]string{"acl {allow all\n}"}, false)
+	//testParsing([]string{"acl {\nallow all}"}, false) // '}' is not on the next line, "all}" parses as regexp
 }

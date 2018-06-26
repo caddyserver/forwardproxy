@@ -38,6 +38,10 @@ Empty/Correct/Wrong -- tries different credentials
 var testResources = []string{"", "/pic.png"}
 var testHttpVersions = []string{"HTTP/2.0", "HTTP/1.1"}
 
+var blacklistedDomain = "google-public-dns-a.google.com" // supposed to ever resolve to one of 2 IP addresses below
+var blacklistedIPv4 = "8.8.8.8"
+var blacklistedIPv6 = "2001:4860:4860::8888"
+
 type caddyTestServer struct {
 	*caddy.Instance
 	addr string // could be http or https
@@ -56,11 +60,15 @@ var (
 	caddyForwardProxyProbeResist caddyTestServer // requires auth, and has probing resistance on
 	caddyDummyProbeResist        caddyTestServer // same as caddyForwardProxyProbeResist, but w/o forwardproxy
 
+	caddyForwardProxyWhiteListing        caddyTestServer
+	caddyForwardProxyBlackListing        caddyTestServer
+	caddyForwardProxyNoBlacklistOverride caddyTestServer // to test default blacklist
+
 	// authenticated server upstreams to authenticated https proxy with different credentials
 	caddyAuthedUpstreamEnter caddyTestServer
 
-	caddyTestTarget     caddyTestServer
-	caddyHTTPTestTarget caddyTestServer
+	caddyTestTarget     caddyTestServer // whitelisted by caddyForwardProxyWhiteListing
+	caddyHTTPTestTarget caddyTestServer // serves plain http on 6480
 )
 
 func (c *caddyTestServer) marshal() []byte {
@@ -88,7 +96,6 @@ func (c *caddyTestServer) marshal() []byte {
 			"}"}
 		mainBlock = append(mainBlock, redirectBlock...)
 	}
-	// fmt.Println(strings.Join(mainBlock, "\n"))
 	return []byte(strings.Join(mainBlock, "\n"))
 }
 
@@ -116,24 +123,27 @@ func (c *caddyTestServer) StartTestServer() {
 }
 
 func TestMain(m *testing.M) {
-	caddyForwardProxy = caddyTestServer{addr: "127.0.0.1:1984", root: "./test/forwardproxy",
+	caddyForwardProxy = caddyTestServer{addr: "127.0.0.2:1984", root: "./test/forwardproxy",
 		directives:   []string{"tls self_signed"},
-		proxyEnabled: true, proxyDirectives: []string{"serve_pac"}}
+		proxyEnabled: true, proxyDirectives: []string{"serve_pac",
+			"acl {\nallow all\n}"}}
 	caddyForwardProxy.StartTestServer()
 
-	caddyForwardProxyAuth = caddyTestServer{addr: "127.0.0.1:4891", root: "./test/forwardproxy",
+	caddyForwardProxyAuth = caddyTestServer{addr: "127.0.0.2:4891", root: "./test/forwardproxy",
 		directives:   []string{"tls self_signed"},
-		proxyEnabled: true, proxyDirectives: []string{"basicauth test pass"}}
+		proxyEnabled: true, proxyDirectives: []string{"basicauth test pass",
+			"acl {\nallow all\n}"}}
 	caddyForwardProxyAuth.StartTestServer()
 
-	caddyForwardProxyProbeResist = caddyTestServer{addr: "127.0.0.1:8888", root: "./test/forwardproxy",
+	caddyForwardProxyProbeResist = caddyTestServer{addr: "127.0.0.2:8888", root: "./test/forwardproxy",
 		directives: []string{"tls self_signed"}, HTTPRedirectPort: "8880",
 		proxyEnabled: true, proxyDirectives: []string{"basicauth test pass",
 			"probe_resistance test.localhost",
-			"serve_pac superhiddenfile.pac"}}
+			"serve_pac superhiddenfile.pac",
+			"acl {\nallow all\n}"}}
 	caddyForwardProxyProbeResist.StartTestServer()
 
-	caddyDummyProbeResist = caddyTestServer{addr: "127.0.0.1:9999", root: "./test/forwardproxy",
+	caddyDummyProbeResist = caddyTestServer{addr: "127.0.0.2:9999", root: "./test/forwardproxy",
 		directives: []string{"tls self_signed"}, HTTPRedirectPort: "9980",
 		proxyEnabled: false}
 	caddyDummyProbeResist.StartTestServer()
@@ -149,11 +159,29 @@ func TestMain(m *testing.M) {
 		proxyEnabled: false}
 	caddyHTTPTestTarget.StartTestServer()
 
-	caddyAuthedUpstreamEnter = caddyTestServer{addr: "127.0.0.1:6585", root: "./test/upstreamingproxy",
+	caddyAuthedUpstreamEnter = caddyTestServer{addr: "127.0.0.2:6585", root: "./test/upstreamingproxy",
 		directives:   []string{"tls self_signed"},
 		proxyEnabled: true, proxyDirectives: []string{"upstream https://test:pass@127.0.0.1:4891",
 			"basicauth upstreamtest upstreampass"}}
 	caddyAuthedUpstreamEnter.StartTestServer()
+
+	caddyForwardProxyWhiteListing = caddyTestServer{addr: "127.0.0.2:8776", root: "./test/forwardproxy",
+		directives:   []string{"tls self_signed"},
+		proxyEnabled: true, proxyDirectives: []string{"acl {\nallow localhost\n deny all\n}",
+			"ports 6451"}}
+	caddyForwardProxyWhiteListing.StartTestServer()
+
+	caddyForwardProxyBlackListing = caddyTestServer{addr: "127.0.0.2:6676", root: "./test/forwardproxy",
+		directives:   []string{"tls self_signed"},
+		proxyEnabled: true, proxyDirectives: []string{"acl {\ndeny " + blacklistedIPv4 + "/30\n" +
+			"deny " + blacklistedIPv6 + "\nallow all\n}"},
+	}
+	caddyForwardProxyBlackListing.StartTestServer()
+
+	caddyForwardProxyNoBlacklistOverride = caddyTestServer{addr: "127.0.0.2:6679", root: "./test/forwardproxy",
+		directives:   []string{"tls self_signed"},
+		proxyEnabled: true, proxyDirectives: []string{}}
+	caddyForwardProxyNoBlacklistOverride.StartTestServer()
 
 	retCode := m.Run()
 
@@ -164,6 +192,9 @@ func TestMain(m *testing.M) {
 	caddyTestTarget.Stop()
 	caddyHTTPTestTarget.Stop()
 	caddyAuthedUpstreamEnter.Stop()
+	caddyForwardProxyWhiteListing.Stop()
+	caddyForwardProxyBlackListing.Stop()
+	caddyForwardProxyNoBlacklistOverride.Stop()
 
 	os.Exit(retCode)
 }
@@ -218,24 +249,6 @@ func TestTheTest(t *testing.T) {
 	}
 }
 
-func TestIsSubdomain(t *testing.T) {
-	testSubDomain := func(s, domain string, expectedResult bool) {
-		result := isSubdomain(s, domain)
-		if result != expectedResult {
-			t.Fatalf("Expected: isSubdomain(%s, %s) is %v, Got: %v", s, domain, expectedResult, result)
-		}
-	}
-	testSubDomain("hoooli.abc", "hooya.ya", false)
-	testSubDomain("", "hooya.ya", false)
-	testSubDomain("hoooli.abc", "", false)
-	testSubDomain("hoooli.abc", "hiddenlink.localhost", false)
-	testSubDomain("www.hoooli.abc", "hoooli.abc", true)
-	testSubDomain("hoooli.abc", "hoooli.abc", true)
-	testSubDomain(".hoooli.abc", "hoooli.abc", true)
-	testSubDomain("sup.hoooli.abc", "hoooli.abc", true)
-	testSubDomain("qwe.qwe.qwe.hoooli.abc", "hoooli.abc", true)
-}
-
 func debugIoCopy(dst io.Writer, src io.Reader, prefix string) (written int64, err error) {
 	buf := make([]byte, 32*1024)
 	flusher, ok := dst.(http.Flusher)
@@ -277,7 +290,7 @@ func httpdump(r interface{}) string {
 		if v == nil {
 			return "httpdump: nil"
 		}
-		b, err := httputil.DumpRequest(v, false)
+		b, err := httputil.DumpRequest(v, true)
 		if err != nil {
 			return err.Error()
 		} else {
@@ -287,7 +300,7 @@ func httpdump(r interface{}) string {
 		if v == nil {
 			return "httpdump: nil"
 		}
-		b, err := httputil.DumpResponse(v, false)
+		b, err := httputil.DumpResponse(v, true)
 		if err != nil {
 			return err.Error()
 		} else {

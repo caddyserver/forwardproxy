@@ -17,6 +17,7 @@
 package forwardproxy
 
 import (
+	"bufio"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -32,30 +33,49 @@ import (
 )
 
 type ForwardProxy struct {
-	httpTransport      http.Transport
-	Next               httpserver.Handler
-	authRequired       bool
-	authCredentials    [][]byte // slice with base64-encoded credentials
-	hideIP             bool
-	hideVia            bool
-	whitelistedPorts   []int
+	Next httpserver.Handler
+
+	authRequired    bool
+	authCredentials [][]byte // slice with base64-encoded credentials
+
+	hideIP  bool
+	hideVia bool
+
+	pacFilePath string
+
+	hostname string // do not intercept requests to the hostname (except for hidden link)
+	port     string // port on which chain with forwardproxy is listening on
+
 	probeResistDomain  string
-	pacFilePath        string
 	probeResistEnabled bool
-	dialTimeout        time.Duration // for initial tcp connection
-	hostname           string        // do not intercept requests to the hostname (except for hidden link)
-	port               string        // port on which chain with forwardproxy is listening on
+
+	dialTimeout     time.Duration  // for initial tcp connection
+	responseTimeout *time.Duration // for getting response (affects GET requests only)
 
 	// overridden dial allows to redirect requests to upstream proxy
 	dial     func(network, address string) (net.Conn, error)
 	upstream string // address of upstream proxy
+
+	aclRules         []aclRule
+	whitelistedPorts []int
 }
 
 var bufferPool sync.Pool
 
-// TODO?: getStatusCode(err) that casts to http.Error, net Error, etc. and returns correct http status code
+func (fp *ForwardProxy) hostIsAllowed(hostname string, ip net.IP) bool {
+	for _, rule := range fp.aclRules {
+		switch rule.tryMatch(ip, hostname) {
+		case aclDecisionDeny:
+			return false
+		case aclDecisionAllow:
+			return true
+		}
+	}
+	fmt.Println("ERROR: no acl match for ", hostname, ip) // shouldn't happen
+	return false
+}
 
-func (fp *ForwardProxy) connectPortIsAllowed(port string) bool {
+func (fp *ForwardProxy) portIsAllowed(port string) bool {
 	portInt, err := strconv.Atoi(port)
 	if err != nil {
 		return false
@@ -158,17 +178,6 @@ func (fp *ForwardProxy) checkCredentials(r *http.Request) error {
 	return errors.New("Invalid credentials")
 }
 
-// returns true if `s` is `domain` or subdomain of `domain`. Inputs are expected to be sanitized.
-func isSubdomain(s, domain string) bool {
-	if s == domain {
-		return true
-	}
-	if strings.HasSuffix(s, "."+domain) {
-		return true
-	}
-	return false
-}
-
 // borrowed from `proxy` plugin
 func stripPort(address string) string {
 	// Keep in mind that the address might be a IPv6 address
@@ -225,6 +234,53 @@ func (fp *ForwardProxy) servePacFile(w http.ResponseWriter) (int, error) {
 	return 0, nil
 }
 
+// bool indicates whether it was rejected as "Forbidden"
+// TODO: after custom errors are implemented package-wide, remove the bool
+func (fp *ForwardProxy) dialRequestedAddress(r *http.Request) (net.Conn, error, bool) {
+	var err error
+	var conn net.Conn
+	if fp.upstream != "" {
+		// if upstreaming -- do not resolve locally nor check acl
+		conn, err = fp.dial("tcp", r.URL.Host)
+		return conn, err, false
+	}
+	port := r.URL.Port()
+	if port == "" {
+		switch r.Method {
+		case http.MethodGet:
+			port = "80" // implicit port for GET requests
+		case http.MethodConnect:
+			return nil, errors.New("port is required for CONNECT " + r.URL.String()), true
+		default:
+			return nil, errors.New("Method " + r.Method + " is not allowed"), true
+		}
+	}
+	if !fp.portIsAllowed(port) {
+		return nil, errors.New("port " + r.URL.Hostname() + " is not allowed"), true
+	}
+
+	// in case IP was provided, net.LookupIP will simply return it
+	IPs, err := net.LookupIP(r.URL.Hostname())
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("Lookup of %s failed: %v",
+			r.URL.Hostname(), err)), false
+	}
+
+	// This is net.Dial's default behavior: if the host resolves to multiple IP addresses,
+	// Dial will try each IP address in order until one succeeds
+	for _, ip := range IPs {
+		if !fp.hostIsAllowed(r.URL.Hostname(), ip) {
+			continue
+		}
+
+		conn, err = fp.dial("tcp", net.JoinHostPort(ip.String(), port))
+		if err == nil {
+			return conn, err, false
+		}
+	}
+	return nil, errors.New("No allowed IP addresses for " + r.URL.Hostname()), true
+}
+
 func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, error) {
 	var authErr error
 	if fp.authRequired {
@@ -233,7 +289,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 	if fp.probeResistEnabled && len(fp.probeResistDomain) > 0 && stripPort(r.Host) == fp.probeResistDomain {
 		return serveHiddenPage(w, authErr)
 	}
-	if isSubdomain(stripPort(r.Host), fp.hostname) && (r.Method != http.MethodConnect || authErr != nil) {
+	if stripPort(r.Host) == fp.hostname && (r.Method != http.MethodConnect || authErr != nil) {
 		// Always pass non-CONNECT requests to hostname
 		// Pass CONNECT requests only if probe resistance is enabled and not authenticated
 		if fp.shouldServePacFile(r) {
@@ -256,22 +312,27 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		return http.StatusHTTPVersionNotSupported, errors.New("Unsupported HTTP major version: " + strconv.Itoa(r.ProtoMajor))
 	}
 
+	targetConn, err, forbidden := fp.dialRequestedAddress(r)
+	if forbidden {
+		return http.StatusForbidden, err
+	}
+	if err != nil {
+		// failed, but not because it's forbidden
+		return http.StatusBadGateway, errors.New(fmt.Sprintf("dial %s failed: %v", r.URL.Host, err))
+	}
+	if targetConn == nil {
+		// safest to check both error and targetConn afterwards, in case fp.dial (potentially unstable
+		// from x/net/proxy) misbehaves and returns both nil or both non-nil
+		return http.StatusForbidden, errors.New("hostname " + r.URL.Hostname() + " is not allowed")
+	}
+	defer targetConn.Close()
+
 	if r.Method == http.MethodConnect {
 		if r.ProtoMajor == 2 {
 			if len(r.URL.Scheme) > 0 || len(r.URL.Path) > 0 {
 				return http.StatusBadRequest, errors.New("CONNECT request has :scheme or/and :path pseudo-header fields")
 			}
 		}
-
-		if !fp.connectPortIsAllowed(r.URL.Port()) {
-			return http.StatusForbidden, errors.New("CONNECT port not allowed for " + r.URL.String())
-		}
-
-		targetConn, err := fp.dial("tcp", r.URL.Hostname()+":"+r.URL.Port())
-		if err != nil {
-			return http.StatusBadGateway, errors.New(fmt.Sprintf("Dial %s failed: %v", r.URL.String(), err))
-		}
-		defer targetConn.Close()
 
 		switch r.ProtoMajor {
 		case 1: // http1: hijack the whole flow
@@ -310,15 +371,22 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if !fp.hideVia {
 			r.Header.Add("Via", strconv.Itoa(r.ProtoMajor)+"."+strconv.Itoa(r.ProtoMinor)+" caddy")
 		}
-		response, err := fp.httpTransport.RoundTrip(r)
-		if err != nil {
-			if response != nil {
-				if response.StatusCode != 0 {
-					return response.StatusCode, errors.New("failed to do RoundTrip(): " + err.Error())
-				}
-			}
-			return http.StatusBadGateway, errors.New("failed to do RoundTrip(): " + err.Error())
+
+		if fp.responseTimeout != nil {
+			targetConn.SetDeadline(time.Now().Add(*fp.responseTimeout))
 		}
+
+		var response *http.Response
+		err = r.Write(targetConn)
+		if err != nil {
+			return http.StatusBadGateway, errors.New("failed to write http request: " + err.Error())
+		}
+		response, err = http.ReadResponse(bufio.NewReader(targetConn), r)
+		if err != nil {
+			return http.StatusBadGateway, errors.New("failed to read http response: " + err.Error())
+		}
+
+		// TODO?: check 301 and 302 redirects against ACL and follow them
 		return 0, forwardResponse(w, response)
 	}
 }
