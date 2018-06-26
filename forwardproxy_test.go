@@ -61,7 +61,7 @@ func connectAndGetViaProxy(targetHost, resource, proxyAddr, httpTargetVer, proxy
 		connectRequest.Header.Set("Proxy-Authorization", proxyCredentials)
 	}
 	connectRequest.Host = targetHost
-	connectRequest.URL, err = url.Parse("http://" + connectRequest.Host)
+	connectRequest.URL, err = url.Parse("https://" + connectRequest.Host)
 	if err != nil {
 		return nil, err
 	}
