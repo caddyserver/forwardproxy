@@ -235,50 +235,57 @@ func (fp *ForwardProxy) servePacFile(w http.ResponseWriter) (int, error) {
 }
 
 // bool indicates whether it was rejected as "Forbidden"
-// TODO: after custom errors are implemented package-wide, remove the bool
+// TODO: after custom status code-based errors are implemented package-wide, remove the bool
 func (fp *ForwardProxy) dialRequestedAddress(r *http.Request) (net.Conn, error, bool) {
 	var err error
 	var conn net.Conn
-	if fp.upstream != "" {
-		// if upstreaming -- do not resolve locally nor check acl
-		conn, err = fp.dial("tcp", r.URL.Host)
-		return conn, err, false
+
+	hostPort := r.URL.Host
+	if hostPort == "" {
+		hostPort = r.Host
 	}
-	port := r.URL.Port()
-	if port == "" {
-		switch r.Method {
-		case http.MethodGet:
-			port = "80" // implicit port for GET requests
-		case http.MethodConnect:
-			return nil, errors.New("port is required for CONNECT " + r.URL.String()), true
-		default:
-			return nil, errors.New("Method " + r.Method + " is not allowed"), true
+	host, port, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		if r.Method == http.MethodConnect {
+			return nil, err, false
+		}
+		// for other methods, try implicit port 80
+		hostPort = net.JoinHostPort(hostPort, "80")
+		host, port, err = net.SplitHostPort(hostPort)
+		if err != nil {
+			return nil, err, false
 		}
 	}
+	if fp.upstream != "" {
+		// if upstreaming -- do not resolve locally nor check acl
+		conn, err = fp.dial("tcp", hostPort)
+		return conn, err, false
+	}
+
 	if !fp.portIsAllowed(port) {
-		return nil, errors.New("port " + r.URL.Hostname() + " is not allowed"), true
+		return nil, errors.New("port " + port + " is not allowed"), true
 	}
 
 	// in case IP was provided, net.LookupIP will simply return it
-	IPs, err := net.LookupIP(r.URL.Hostname())
+	IPs, err := net.LookupIP(host)
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("Lookup of %s failed: %v",
-			r.URL.Hostname(), err)), false
+			host, err)), false
 	}
 
 	// This is net.Dial's default behavior: if the host resolves to multiple IP addresses,
 	// Dial will try each IP address in order until one succeeds
 	for _, ip := range IPs {
-		if !fp.hostIsAllowed(r.URL.Hostname(), ip) {
+		if !fp.hostIsAllowed(host, ip) {
 			continue
 		}
 
-		conn, err = fp.dial("tcp", net.JoinHostPort(ip.String(), port))
+		conn, err = fp.dial("tcp", hostPort)
 		if err == nil {
 			return conn, err, false
 		}
 	}
-	return nil, errors.New("No allowed IP addresses for " + r.URL.Hostname()), true
+	return nil, errors.New("No allowed IP addresses for " + host), true
 }
 
 func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, error) {
