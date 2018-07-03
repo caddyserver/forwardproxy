@@ -48,7 +48,7 @@ Proxy will no longer respond with "407 Proxy Authentication Required" if credent
 and will attempt to mimic a generic Caddy web server as if the forward proxy is not enabled.  
 Probing resistance works (and makes sense) only if basicauth is set up.
 To use your proxy with probe resistance, supply your basicauth credentials to your client configuration.
-If your proxy client(browser, operating system, [browser extension](https://chrome.google.com/webstore/detail/proxy-switchyomega/padekgcemlokbadohgkifijomclgjgif), etc.)
+If your proxy client(browser, operating system, browser extension, etc)
 allows you to preconfigure credentials, and sends credentials preemptively, you do not need secret link.  
 If your proxy client does not preemptively send credentials, you will have to visit your secret link in your browser to trigger the authentication.
 Make sure that specified domain name is visitable, does not contain uppercase characters, does not start with dot, etc.
