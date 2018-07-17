@@ -18,6 +18,7 @@ package forwardproxy
 
 import (
 	"bufio"
+	"context"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -29,6 +30,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/caddyserver/forwardproxy/httpclient"
 	"github.com/mholt/caddy/caddyhttp/httpserver"
 )
 
@@ -52,9 +54,10 @@ type ForwardProxy struct {
 	dialTimeout     time.Duration  // for initial tcp connection
 	responseTimeout *time.Duration // for getting response (affects GET requests only)
 
-	// overridden dial allows to redirect requests to upstream proxy
-	dial     func(network, address string) (net.Conn, error)
-	upstream string // address of upstream proxy
+	// overridden dial and dialContext allow to redirect requests to upstream proxy
+	dial        func(network, address string) (net.Conn, error)
+	dialContext func(ctx context.Context, network, address string) (net.Conn, error)
+	upstream    string // address of upstream proxy
 
 	aclRules         []aclRule
 	whitelistedPorts []int
@@ -258,7 +261,20 @@ func (fp *ForwardProxy) dialRequestedAddress(r *http.Request) (net.Conn, error, 
 	}
 	if fp.upstream != "" {
 		// if upstreaming -- do not resolve locally nor check acl
-		conn, err = fp.dial("tcp", hostPort)
+		if fp.dialContext != nil && !fp.hideIP {
+			ctxHeader := make(http.Header)
+			for k, v := range r.Header {
+				if kL := strings.ToLower(k); kL == "forwarded" || kL == "x-forwarded-for" {
+					ctxHeader[k] = v
+				}
+			}
+			ctxHeader.Add("Forwarded", "for=\""+r.RemoteAddr+"\"")
+			ctx := context.WithValue(context.Background(), httpclient.ContextKeyHeader{}, ctxHeader)
+
+			conn, err = fp.dialContext(ctx, "tcp", hostPort)
+		} else {
+			conn, err = fp.dial("tcp", hostPort)
+		}
 		return conn, err, false
 	}
 

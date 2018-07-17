@@ -15,25 +15,24 @@
 package forwardproxy
 
 import (
+	"bufio"
+	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"log"
 	"net"
-	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"bufio"
-	"crypto/tls"
-	"fmt"
-
+	"github.com/caddyserver/forwardproxy/httpclient"
 	"github.com/mholt/caddy"
 	"github.com/mholt/caddy/caddyhttp/httpserver"
 	"golang.org/x/net/proxy"
-	"os"
 )
 
 func setup(c *caddy.Controller) error {
@@ -272,21 +271,41 @@ func setup(c *caddy.Controller) error {
 			return errors.New("insecure schemes are only allowed to localhost upstreams")
 		}
 
-		// TODO: remove homebrewed Dialer when https://go-review.googlesource.com/c/net/+/111135 gets merged
-		proxy.RegisterDialerType("https", func(u *url.URL, _ proxy.Dialer) (proxy.Dialer, error) {
+		registerHTTPDialer := func(u *url.URL, _ proxy.Dialer) (proxy.Dialer, error) {
 			// CONNECT request is proxied as-is, so we don't care about target url, but it could be
 			// useful in future to implement policies of choosing between multiple upstream servers.
 			// Given dialer is not used, since it's the same dialer provided by us.
-			return NewHTTPDialer(dialer, true, upstreamURL), nil
-		})
-		proxy.RegisterDialerType("http", func(u *url.URL, _ proxy.Dialer) (proxy.Dialer, error) {
-			return NewHTTPDialer(dialer, false, upstreamURL), nil
-		})
+			d, err := httpclient.NewHTTPConnectDialer(upstreamURL.String())
+			if err != nil {
+				return nil, err
+			}
+			d.Dialer = *dialer
+			if isLocalhost(upstreamURL.Hostname()) && upstreamURL.Scheme == "https" {
+				log.Println("Localhost upstream detected, disabling verification of TLS certificate")
+				d.DialTLS = func(conn net.Conn) (net.Conn, string, error) {
+					cl := tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
+					err := cl.Handshake()
+					if err != nil {
+						return nil, "", err
+					}
+					return cl, cl.ConnectionState().NegotiatedProtocol, err
+				}
+			}
+			return d, nil
+		}
+		proxy.RegisterDialerType("https", registerHTTPDialer)
+		proxy.RegisterDialerType("http", registerHTTPDialer)
+
 		newDialer, err := proxy.FromURL(upstreamURL, dialer)
 		if err != nil {
 			return errors.New("failed to create proxy to upstream: " + err.Error())
 		}
 		fp.dial = newDialer.Dial
+		if ctxDialer, ok := newDialer.(interface {
+			DialContext(ctx context.Context, network, address string) (net.Conn, error)
+		}); ok {
+			fp.dialContext = ctxDialer.DialContext
+		}
 	}
 
 	httpserver.GetConfig(c).AddMiddleware(func(next httpserver.Handler) httpserver.Handler {
@@ -304,60 +323,6 @@ func init() {
 		ServerType: "http",
 		Action:     setup,
 	})
-}
-
-type HTTPDialer struct {
-	dialer       *net.Dialer
-	upstreamUrl  string
-	tlsConf      *tls.Config
-	extraHeaders string // empty or whole lines together with \r\n\r\n
-}
-
-func NewHTTPDialer(dialer *net.Dialer, useHTTPS bool, upstream *url.URL) *HTTPDialer {
-	d := &HTTPDialer{
-		dialer:      dialer,
-		upstreamUrl: upstream.Host,
-		tlsConf:     nil,
-	}
-	if useHTTPS {
-		d.tlsConf = &tls.Config{ServerName: upstream.Hostname()}
-		if isLocalhost(upstream.Hostname()) {
-			log.Println("Localhost upstream detected, disabling verification of TLS certificate")
-			d.tlsConf.InsecureSkipVerify = true
-		}
-	}
-	if upstream.User != nil {
-		d.extraHeaders = fmt.Sprintf("Proxy-Authorization: basic %s\r\n",
-			base64.StdEncoding.EncodeToString([]byte(upstream.User.String())))
-	}
-
-	return d
-}
-
-func (d *HTTPDialer) Dial(network, addr string) (net.Conn, error) {
-	var err error
-	var c net.Conn
-	if d.tlsConf == nil {
-		c, err = d.dialer.Dial(network, d.upstreamUrl)
-	} else {
-		c, err = tls.DialWithDialer(d.dialer, network, d.upstreamUrl, d.tlsConf)
-	}
-	if err != nil {
-		return nil, err
-	}
-	// TODO: multiplexed http/2 to upstream, also will eventually be added to x/net/proxy
-	_, err = fmt.Fprintf(c, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n%s\r\n", addr, addr, d.extraHeaders)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := http.ReadResponse(bufio.NewReader(c), nil)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, errors.New("Upstream responded with " + resp.Status)
-	}
-	return c, nil
 }
 
 func isLocalhost(hostname string) bool {

@@ -122,6 +122,8 @@ func TestSetup(t *testing.T) {
 	testParsing([]string{"upstream https://proxy.site"}, true)
 	testParsing([]string{"upstream https://caddyserver.com", "acl {\nallow all\n}"}, false)
 	testParsing([]string{"upstream https://caddyserver.com", "ports 123"}, false)
+	testParsing([]string{"upstream https://username:password@caddyserver.com", "ports 123"}, false)
+	testParsing([]string{"upstream https://username:password@caddyserver.com:90", "ports 123"}, false)
 
 	testParsing([]string{"acl {\nallow all\n}"}, true)
 	testParsing([]string{"acl {\nallow localhost 128.32.22.1/32 1.1.1.1 caddyserver.com\n deny all\n}"}, true)
