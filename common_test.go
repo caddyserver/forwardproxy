@@ -36,7 +36,12 @@ Auth/NoAuth
 Empty/Correct/Wrong -- tries different credentials
 */
 var testResources = []string{"", "/pic.png"}
-var testHttpVersions = []string{"HTTP/2.0", "HTTP/1.1"}
+var testHttpProxyVersions = []string{"HTTP/2.0", "HTTP/1.1"}
+var testHttpTargetVersions = []string{"HTTP/1.1"}
+var httpVersionToAlpn = map[string]string{
+	"HTTP/1.1": "http/1.1",
+	"HTTP/2.0": "h2",
+}
 
 var blacklistedDomain = "google-public-dns-a.google.com" // supposed to ever resolve to one of 2 IP addresses below
 var blacklistedIPv4 = "8.8.8.8"

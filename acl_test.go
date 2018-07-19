@@ -14,9 +14,9 @@ test blacklist refused with correct status
 
 func TestWhitelistAllowing(t *testing.T) {
 	useTls := true
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyWhiteListing.addr, httpTargetVer,
+			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyWhiteListing.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -29,9 +29,9 @@ func TestWhitelistAllowing(t *testing.T) {
 
 func TestWhitelistBlocking(t *testing.T) {
 	useTls := true
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyWhiteListing.addr, httpTargetVer,
+			response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyWhiteListing.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -41,9 +41,9 @@ func TestWhitelistBlocking(t *testing.T) {
 		}
 	}
 
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy("google.com:6451", resource, caddyForwardProxyWhiteListing.addr, httpTargetVer,
+			response, err := getViaProxy("google.com:6451", resource, caddyForwardProxyWhiteListing.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -56,9 +56,9 @@ func TestWhitelistBlocking(t *testing.T) {
 
 func TestLocalhostDefaultForbidden(t *testing.T) {
 	useTls := true
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy("localhost:6451", resource, caddyForwardProxyNoBlacklistOverride.addr, httpTargetVer,
+			response, err := getViaProxy("localhost:6451", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -68,9 +68,9 @@ func TestLocalhostDefaultForbidden(t *testing.T) {
 		}
 	}
 
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy("127.0.0.1:808", resource, caddyForwardProxyNoBlacklistOverride.addr, httpTargetVer,
+			response, err := getViaProxy("127.0.0.1:808", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -80,9 +80,9 @@ func TestLocalhostDefaultForbidden(t *testing.T) {
 		}
 	}
 
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy("[::1]:8080", resource, caddyForwardProxyNoBlacklistOverride.addr, httpTargetVer,
+			response, err := getViaProxy("[::1]:8080", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -95,9 +95,9 @@ func TestLocalhostDefaultForbidden(t *testing.T) {
 
 func TestLocalNetworksDefaultForbidden(t *testing.T) {
 	useTls := true
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy("10.0.0.0:80", resource, caddyForwardProxyNoBlacklistOverride.addr, httpTargetVer,
+			response, err := getViaProxy("10.0.0.0:80", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -107,9 +107,9 @@ func TestLocalNetworksDefaultForbidden(t *testing.T) {
 		}
 	}
 
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy("127.222.34.1:443", resource, caddyForwardProxyNoBlacklistOverride.addr, httpTargetVer,
+			response, err := getViaProxy("127.222.34.1:443", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -119,9 +119,9 @@ func TestLocalNetworksDefaultForbidden(t *testing.T) {
 		}
 	}
 
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy("172.16.0.1:8080", resource, caddyForwardProxyNoBlacklistOverride.addr, httpTargetVer,
+			response, err := getViaProxy("172.16.0.1:8080", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -131,9 +131,9 @@ func TestLocalNetworksDefaultForbidden(t *testing.T) {
 		}
 	}
 
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy("192.168.192.168:888", resource, caddyForwardProxyNoBlacklistOverride.addr, httpTargetVer,
+			response, err := getViaProxy("192.168.192.168:888", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -146,9 +146,9 @@ func TestLocalNetworksDefaultForbidden(t *testing.T) {
 
 func TestBlacklistBlocking(t *testing.T) {
 	useTls := true
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(blacklistedDomain, resource, caddyForwardProxyBlackListing.addr, httpTargetVer,
+			response, err := getViaProxy(blacklistedDomain, resource, caddyForwardProxyBlackListing.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -158,9 +158,9 @@ func TestBlacklistBlocking(t *testing.T) {
 		}
 	}
 
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(blacklistedIPv4, resource, caddyForwardProxyBlackListing.addr, httpTargetVer,
+			response, err := getViaProxy(blacklistedIPv4, resource, caddyForwardProxyBlackListing.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -170,9 +170,9 @@ func TestBlacklistBlocking(t *testing.T) {
 		}
 	}
 
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(blacklistedIPv6, resource, caddyForwardProxyBlackListing.addr, httpTargetVer,
+			response, err := getViaProxy("["+blacklistedIPv6+"]:80", resource, caddyForwardProxyBlackListing.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
@@ -185,9 +185,9 @@ func TestBlacklistBlocking(t *testing.T) {
 
 func TestBlacklistAllowing(t *testing.T) {
 	useTls := true
-	for _, httpTargetVer := range testHttpVersions {
+	for _, httpProxyVer := range testHttpProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyBlackListing.addr, httpTargetVer,
+			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyBlackListing.addr, httpProxyVer,
 				"", useTls)
 			if err != nil {
 				t.Fatal(err)
