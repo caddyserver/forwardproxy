@@ -281,6 +281,8 @@ func setup(c *caddy.Controller) error {
 			}
 			d.Dialer = *dialer
 			if isLocalhost(upstreamURL.Hostname()) && upstreamURL.Scheme == "https" {
+				// disabling verification helps with testing the package and setups
+				// either way, it's impossible to have a legit TLS certificate for "127.0.0.1"
 				log.Println("Localhost upstream detected, disabling verification of TLS certificate")
 				d.DialTLS = func(conn net.Conn) (net.Conn, string, error) {
 					cl := tls.Client(conn, &tls.Config{InsecureSkipVerify: true})

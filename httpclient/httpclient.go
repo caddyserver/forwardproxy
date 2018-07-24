@@ -27,9 +27,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 
 	"golang.org/x/net/http2"
-	"sync"
 )
 
 // HTTPConnectDialer allows to configure one-time use HTTP CONNECT client
@@ -63,7 +63,8 @@ func NewHTTPConnectDialer(proxyUrlStr string) (*HTTPConnectDialer, error) {
 	}
 
 	if proxyUrl.Host == "" {
-		return nil, errors.New("misparsed `url=`, make sure to specify full url like https://username:password@hostname.com:443/")
+		return nil, errors.New("misparsed `url=" + proxyUrlStr +
+			"`, make sure to specify full url like https://username:password@hostname.com:443/")
 	}
 
 	switch proxyUrl.Scheme {
@@ -143,27 +144,7 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 		return NewHttp2Conn(rawConn, pw, resp.Body), nil
 	}
 
-	if c.EnableH2ConnReuse {
-		c.cacheH2Mu.Lock()
-		if c.cachedH2ClientConn != nil && c.cachedH2RawConn != nil {
-			if c.cachedH2ClientConn.CanTakeNewRequest() {
-				proxyConn, err := connectHttp2(c.cachedH2RawConn, c.cachedH2ClientConn)
-				if err == nil {
-					c.cacheH2Mu.Unlock()
-					return proxyConn, err
-				}
-				// else: carry on and try again
-			}
-		}
-		c.cacheH2Mu.Unlock()
-	}
-
-	rawConn, err := c.Dialer.DialContext(ctx, network, c.ProxyUrl.Host)
-	if err != nil {
-		return nil, err
-	}
-
-	connectHttp1 := func() (net.Conn, error) {
+	connectHttp1 := func(rawConn net.Conn) (net.Conn, error) {
 		req.Proto = "HTTP/1.1"
 		req.ProtoMajor = 1
 		req.ProtoMinor = 1
@@ -185,6 +166,26 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 			return nil, errors.New("Proxy responded with non 200 code: " + resp.Status)
 		}
 		return rawConn, nil
+	}
+
+	if c.EnableH2ConnReuse {
+		c.cacheH2Mu.Lock()
+		if c.cachedH2ClientConn != nil && c.cachedH2RawConn != nil {
+			if c.cachedH2ClientConn.CanTakeNewRequest() {
+				proxyConn, err := connectHttp2(c.cachedH2RawConn, c.cachedH2ClientConn)
+				if err == nil {
+					c.cacheH2Mu.Unlock()
+					return proxyConn, err
+				}
+				// else: carry on and try again
+			}
+		}
+		c.cacheH2Mu.Unlock()
+	}
+
+	rawConn, err := c.Dialer.DialContext(ctx, network, c.ProxyUrl.Host)
+	if err != nil {
+		return nil, err
 	}
 
 	negotiatedProtocol := ""
@@ -218,7 +219,7 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 	case "":
 		fallthrough
 	case "http/1.1":
-		return connectHttp1()
+		return connectHttp1(rawConn)
 	case "h2":
 		t := http2.Transport{}
 		h2clientConn, err := t.NewClientConn(rawConn)
