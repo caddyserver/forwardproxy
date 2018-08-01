@@ -43,9 +43,9 @@ type HTTPConnectDialer struct {
 
 	Dialer net.Dialer // overridden dialer allow to control establishment of TCP connection
 
-	// overridden DialTLS allows user to control establishment of TLS connection,
-	// given TCP connection. returns established TLS connection, ALPN and error
-	DialTLS func(net.Conn) (net.Conn, string, error)
+	// overridden DialTLS allows user to control establishment of TLS connection
+	// MUST return connection with completed Handshake, and NegotiatedProtocol
+	DialTLS func(network string, address string) (net.Conn, string, error)
 
 	EnableH2ConnReuse  bool
 	cacheH2Mu          sync.Mutex
@@ -183,34 +183,37 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 		c.cacheH2Mu.Unlock()
 	}
 
-	rawConn, err := c.Dialer.DialContext(ctx, network, c.ProxyUrl.Host)
-	if err != nil {
-		return nil, err
-	}
-
+	var err error
+	var rawConn net.Conn
 	negotiatedProtocol := ""
 	switch c.ProxyUrl.Scheme {
 	case "http":
-	case "https":
-		if c.DialTLS != nil {
-			rawConn, negotiatedProtocol, err = c.DialTLS(rawConn)
-			if err != nil {
-				return nil, err
-			}
-			break
-		}
-		tlsConf := tls.Config{
-			NextProtos: []string{"h2", "http/1.1"},
-			ServerName: c.ProxyUrl.Hostname(),
-		}
-
-		tlsConn := tls.Client(rawConn, &tlsConf)
-		err = tlsConn.Handshake()
+		rawConn, err = c.Dialer.DialContext(ctx, network, c.ProxyUrl.Host)
 		if err != nil {
 			return nil, err
 		}
-		negotiatedProtocol = tlsConn.ConnectionState().NegotiatedProtocol
-		rawConn = tlsConn
+	case "https":
+		if c.DialTLS != nil {
+			rawConn, negotiatedProtocol, err = c.DialTLS(network, c.ProxyUrl.Host)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			tlsConf := tls.Config{
+				NextProtos: []string{"h2", "http/1.1"},
+				ServerName: c.ProxyUrl.Hostname(),
+			}
+			tlsConn, err := tls.Dial(network, c.ProxyUrl.Host, &tlsConf)
+			if err != nil {
+				return nil, err
+			}
+			err = tlsConn.Handshake()
+			if err != nil {
+				return nil, err
+			}
+			negotiatedProtocol = tlsConn.ConnectionState().NegotiatedProtocol
+			rawConn = tlsConn
+		}
 	default:
 		return nil, errors.New("scheme " + c.ProxyUrl.Scheme + " is not supported")
 	}

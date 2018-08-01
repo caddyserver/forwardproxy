@@ -17,6 +17,7 @@ import (
 )
 
 var credentialsEmpty = ""
+var credentialsCorrectPlain = "test:pass"
 var credentialsCorrect = "Basic dGVzdDpwYXNz"                                 // test:pass
 var credentialsUpstreamCorrect = "basic dXBzdHJlYW10ZXN0OnVwc3RyZWFtcGFzcw==" // upstreamtest:upstreampass
 var credentialsWrong = []string{
@@ -62,6 +63,7 @@ type caddyTestServer struct {
 var (
 	caddyForwardProxy            caddyTestServer
 	caddyForwardProxyAuth        caddyTestServer // requires auth
+	caddyHTTPForwardProxyAuth    caddyTestServer // requires auth, does not use TLS
 	caddyForwardProxyProbeResist caddyTestServer // requires auth, and has probing resistance on
 	caddyDummyProbeResist        caddyTestServer // same as caddyForwardProxyProbeResist, but w/o forwardproxy
 
@@ -140,6 +142,12 @@ func TestMain(m *testing.M) {
 			"acl {\nallow all\n}"}}
 	caddyForwardProxyAuth.StartTestServer()
 
+	caddyHTTPForwardProxyAuth = caddyTestServer{addr: "127.0.0.2:6973", root: "./test/forwardproxy",
+		directives:   []string{"tls off"},
+		proxyEnabled: true, proxyDirectives: []string{"basicauth test pass",
+			"acl {\nallow all\n}"}}
+	caddyHTTPForwardProxyAuth.StartTestServer()
+
 	caddyForwardProxyProbeResist = caddyTestServer{addr: "127.0.0.2:8888", root: "./test/forwardproxy",
 		directives: []string{"tls self_signed"}, HTTPRedirectPort: "8880",
 		proxyEnabled: true, proxyDirectives: []string{"basicauth test pass",
@@ -192,6 +200,7 @@ func TestMain(m *testing.M) {
 
 	caddyForwardProxy.Stop()
 	caddyForwardProxyAuth.Stop()
+	caddyHTTPForwardProxyAuth.Stop()
 	caddyForwardProxyProbeResist.Stop()
 	caddyDummyProbeResist.Stop()
 	caddyTestTarget.Stop()
