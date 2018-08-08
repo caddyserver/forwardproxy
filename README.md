@@ -1,6 +1,8 @@
 # Secure forward proxy plugin for the Caddy web server
 
-[![Build Status](https://travis-ci.org/caddyserver/forwardproxy.svg?branch=master)](https://travis-ci.org/caddyserver/forwardproxy)
+[![Build Status](https://travis-ci.org/caddyserver/forwardproxy.svg?branch=master)](https://travis-ci.org/caddyserver/forwardproxy)  
+[![Join the chat at https://gitter.im/forwardproxy/Lobby](https://badges.gitter.im/forwardproxy/Lobby.svg)](https://gitter.im/forwardproxy/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 
 This plugin enables [Caddy](https://caddyserver.com) to act as a forward proxy (as opposed to reverse proxy, Caddy's standard `proxy` directive) for HTTP/2.0 and HTTP/1.1 requests (HTTP/1.0 might work, but is untested).
 
