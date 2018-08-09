@@ -112,12 +112,16 @@ func dualStream(w1 io.Writer, r1 io.Reader, w2 io.Writer, r2 io.Reader) error {
 
 	go stream(w1, r1)
 	go stream(w2, r2)
-	err1 := <-errChan
-	err2 := <-errChan
-	if err1 != nil {
-		return err1
+
+	firstHangerErr := <-errChan
+
+	closeTimeout := time.NewTimer(30 * time.Second)
+	select {
+	case _ = <-errChan:
+	case <-closeTimeout.C:
 	}
-	return err2
+	closeTimeout.Stop()
+	return firstHangerErr
 }
 
 // Hijacks the connection from ResponseWriter, writes the response and proxies data between targetConn
