@@ -23,7 +23,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -129,7 +128,7 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 		req.ProtoMajor = 2
 		req.ProtoMinor = 0
 		pr, pw := io.Pipe()
-		req.Body = ioutil.NopCloser(pr)
+		req.Body = pr
 
 		resp, err := h2clientConn.RoundTrip(req)
 		if err != nil {
@@ -170,17 +169,23 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 
 	if c.EnableH2ConnReuse {
 		c.cacheH2Mu.Lock()
+		unlocked := false
 		if c.cachedH2ClientConn != nil && c.cachedH2RawConn != nil {
 			if c.cachedH2ClientConn.CanTakeNewRequest() {
-				proxyConn, err := connectHttp2(c.cachedH2RawConn, c.cachedH2ClientConn)
+				rc := c.cachedH2RawConn
+				cc := c.cachedH2ClientConn
+				c.cacheH2Mu.Unlock()
+				unlocked = true
+				proxyConn, err := connectHttp2(rc, cc)
 				if err == nil {
-					c.cacheH2Mu.Unlock()
 					return proxyConn, err
 				}
 				// else: carry on and try again
 			}
 		}
-		c.cacheH2Mu.Unlock()
+		if !unlocked {
+			c.cacheH2Mu.Unlock()
+		}
 	}
 
 	var err error
@@ -269,7 +274,14 @@ func (h *http2Conn) Write(p []byte) (n int, err error) {
 }
 
 func (h *http2Conn) Close() error {
-	h.out.Close()
 	h.in.Close()
-	return h.Conn.Close()
+	return h.out.Close()
+}
+
+func (h *http2Conn) CloseWrite() error {
+	return h.out.Close()
+}
+
+func (h *http2Conn) CloseRead() error {
+	return h.in.Close()
 }

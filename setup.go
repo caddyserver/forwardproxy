@@ -20,8 +20,10 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -40,6 +42,12 @@ func setup(c *caddy.Controller) error {
 	fp := &ForwardProxy{
 		dialTimeout: time.Second * 20,
 		hostname:    httpserver.GetConfig(c).Host(), port: httpserver.GetConfig(c).Port(),
+		httpTransport: http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
+			MaxIdleConns:        50,
+			IdleConnTimeout:     60 * time.Second,
+			TLSHandshakeTimeout: 10 * time.Second,
+		},
 	}
 
 	c.Next() // skip the directive name
@@ -137,8 +145,7 @@ func setup(c *caddy.Controller) error {
 			if timeout < 0 {
 				return c.Err("response_timeout cannot be negative.")
 			}
-			responseTimeout := time.Duration(timeout) * time.Second
-			fp.responseTimeout = &responseTimeout
+			fp.httpTransport.ResponseHeaderTimeout = time.Duration(timeout) * time.Second
 		case "dial_timeout":
 			if len(args) != 1 {
 				return c.ArgErr()
@@ -155,7 +162,14 @@ func setup(c *caddy.Controller) error {
 			if len(args) != 1 {
 				return c.ArgErr()
 			}
-			fp.upstream = args[0]
+			if fp.upstream != nil {
+				return c.Err("upstream directive specified more than once")
+			}
+			var err error
+			fp.upstream, err = url.Parse(args[0])
+			if err != nil {
+				return c.Err("failed to parse upstream address: " + err.Error())
+			}
 		case "acl":
 			if len(args) != 0 {
 				return c.Err("acl should be only subdirective on the line")
@@ -223,7 +237,7 @@ func setup(c *caddy.Controller) error {
 		}
 	}
 
-	if fp.upstream != "" && (fp.aclRules != nil || len(fp.whitelistedPorts) != 0) {
+	if fp.upstream != nil && (fp.aclRules != nil || len(fp.whitelistedPorts) != 0) {
 		return c.Err("upstream subdirective is incompatible with acl/ports subdirectives")
 	}
 
@@ -258,16 +272,13 @@ func setup(c *caddy.Controller) error {
 		KeepAlive: 30 * time.Second,
 		DualStack: true,
 	}
+	fp.dialContext = dialer.DialContext
+	fp.httpTransport.DialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
+		return fp.dialContextCheckACL(ctx, network, address)
+	}
 
-	fp.dial = dialer.Dial
-
-	if fp.upstream != "" {
-		upstreamURL, err := url.Parse(fp.upstream)
-		if err != nil {
-			return errors.New("failed to parse upstream address: " + err.Error())
-		}
-
-		if !isLocalhost(upstreamURL.Hostname()) && upstreamURL.Scheme != "https" {
+	if fp.upstream != nil {
+		if !isLocalhost(fp.upstream.Hostname()) && fp.upstream.Scheme != "https" {
 			return errors.New("insecure schemes are only allowed to localhost upstreams")
 		}
 
@@ -275,12 +286,12 @@ func setup(c *caddy.Controller) error {
 			// CONNECT request is proxied as-is, so we don't care about target url, but it could be
 			// useful in future to implement policies of choosing between multiple upstream servers.
 			// Given dialer is not used, since it's the same dialer provided by us.
-			d, err := httpclient.NewHTTPConnectDialer(upstreamURL.String())
+			d, err := httpclient.NewHTTPConnectDialer(fp.upstream.String())
 			if err != nil {
 				return nil, err
 			}
 			d.Dialer = *dialer
-			if isLocalhost(upstreamURL.Hostname()) && upstreamURL.Scheme == "https" {
+			if isLocalhost(fp.upstream.Hostname()) && fp.upstream.Scheme == "https" {
 				// disabling verification helps with testing the package and setups
 				// either way, it's impossible to have a legit TLS certificate for "127.0.0.1"
 				log.Println("Localhost upstream detected, disabling verification of TLS certificate")
@@ -297,15 +308,21 @@ func setup(c *caddy.Controller) error {
 		proxy.RegisterDialerType("https", registerHTTPDialer)
 		proxy.RegisterDialerType("http", registerHTTPDialer)
 
-		newDialer, err := proxy.FromURL(upstreamURL, dialer)
+		upstreamDialer, err := proxy.FromURL(fp.upstream, dialer)
 		if err != nil {
 			return errors.New("failed to create proxy to upstream: " + err.Error())
 		}
-		fp.dial = newDialer.Dial
-		if ctxDialer, ok := newDialer.(interface {
+
+		if ctxDialer, ok := upstreamDialer.(interface {
 			DialContext(ctx context.Context, network, address string) (net.Conn, error)
 		}); ok {
+			// upstreamDialer has DialContext - use it
 			fp.dialContext = ctxDialer.DialContext
+		} else {
+			// upstreamDialer does not have DialContext - ignore the context :(
+			fp.dialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
+				return upstreamDialer.Dial(network, address)
+			}
 		}
 	}
 
@@ -369,4 +386,20 @@ func isValidDomainLite(domain string) error {
 		}
 	}
 	return nil
+}
+
+type ProxyError struct {
+	S    string
+	Code int
+}
+
+func (e *ProxyError) Error() string {
+	return fmt.Sprintf("[%v] %s", e.Code, e.S)
+}
+
+func (e *ProxyError) SplitCodeError() (int, error) {
+	if e == nil {
+		return 200, nil
+	}
+	return e.Code, errors.New(e.S)
 }

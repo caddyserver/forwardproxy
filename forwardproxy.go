@@ -18,13 +18,17 @@ package forwardproxy
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,13 +55,13 @@ type ForwardProxy struct {
 	probeResistDomain  string
 	probeResistEnabled bool
 
-	dialTimeout     time.Duration  // for initial tcp connection
-	responseTimeout *time.Duration // for getting response (affects GET requests only)
+	dialTimeout time.Duration // for initial tcp connection
 
-	// overridden dial and dialContext allow to redirect requests to upstream proxy
-	dial        func(network, address string) (net.Conn, error)
+	httpTransport http.Transport
+
+	// overridden dialContext allow to redirect requests to upstream proxy
 	dialContext func(ctx context.Context, network, address string) (net.Conn, error)
-	upstream    string // address of upstream proxy
+	upstream    *url.URL // address of upstream proxy
 
 	aclRules         []aclRule
 	whitelistedPorts []int
@@ -99,25 +103,27 @@ func (fp *ForwardProxy) portIsAllowed(port string) bool {
 	return isAllowed
 }
 
-// Copies data r1->w1 and r2->w2, flushes as needed, and returns when both streams are done.
-func dualStream(w1 io.Writer, r1 io.Reader, w2 io.Writer, r2 io.Reader) error {
-	errChan := make(chan error)
+// Copies data targetWriter->clientReader and clientWriter->targetReader, and flushes as needed
+// Returns when both clientWriter-> targetReader stream is done. Caddy should finish writing
+// targetWriter -> clientReader.
+func dualStream(targetWriter io.WriteCloser, clientReader io.ReadCloser,
+	clientWriter io.Writer, targetReader io.ReadCloser) error {
 
-	stream := func(w io.Writer, r io.Reader) {
+	stream := func(w io.Writer, r io.ReadCloser) error {
+		// copy bytes from r to w
 		buf := bufferPool.Get().([]byte)
 		buf = buf[0:cap(buf)]
 		_, _err := flushingIoCopy(w, r, buf)
-		errChan <- _err
+		if closeWriter, ok := w.(interface {
+			CloseWrite() error
+		}); ok {
+			closeWriter.CloseWrite()
+		}
+		return _err
 	}
 
-	go stream(w1, r1)
-	go stream(w2, r2)
-	err1 := <-errChan
-	err2 := <-errChan
-	if err1 != nil {
-		return err1
-	}
-	return err2
+	go stream(targetWriter, clientReader)
+	return stream(clientWriter, targetReader)
 }
 
 // Hijacks the connection from ResponseWriter, writes the response and proxies data between targetConn
@@ -237,56 +243,38 @@ func (fp *ForwardProxy) servePacFile(w http.ResponseWriter) (int, error) {
 	return 0, nil
 }
 
-// bool indicates whether it was rejected as "Forbidden"
-// TODO: after custom status code-based errors are implemented package-wide, remove the bool
-func (fp *ForwardProxy) dialRequestedAddress(r *http.Request) (net.Conn, error, bool) {
+// dialContextCheckACL enforces Access Control List and calls fp.DialContext
+func (fp *ForwardProxy) dialContextCheckACL(ctx context.Context, network, hostPort string) (net.Conn, *ProxyError) {
 	var err error
 	var conn net.Conn
 
-	hostPort := r.URL.Host
-	if hostPort == "" {
-		hostPort = r.Host
+	if network != "tcp" && network != "tcp4" && network != "tcp6" {
+		return nil, &ProxyError{S: "Network " + network + " is not supported", Code: http.StatusBadRequest}
 	}
+
 	host, port, err := net.SplitHostPort(hostPort)
 	if err != nil {
-		if r.Method == http.MethodConnect {
-			return nil, err, false
-		}
-		// for other methods, try implicit port 80
-		hostPort = net.JoinHostPort(hostPort, "80")
-		host, port, err = net.SplitHostPort(hostPort)
-		if err != nil {
-			return nil, err, false
-		}
+		return nil, &ProxyError{S: err.Error(), Code: http.StatusBadRequest}
 	}
-	if fp.upstream != "" {
-		// if upstreaming -- do not resolve locally nor check acl
-		if fp.dialContext != nil && !fp.hideIP {
-			ctxHeader := make(http.Header)
-			for k, v := range r.Header {
-				if kL := strings.ToLower(k); kL == "forwarded" || kL == "x-forwarded-for" {
-					ctxHeader[k] = v
-				}
-			}
-			ctxHeader.Add("Forwarded", "for=\""+r.RemoteAddr+"\"")
-			ctx := context.WithValue(context.Background(), httpclient.ContextKeyHeader{}, ctxHeader)
 
-			conn, err = fp.dialContext(ctx, "tcp", hostPort)
-		} else {
-			conn, err = fp.dial("tcp", hostPort)
+	if fp.upstream != nil {
+		// if upstreaming -- do not resolve locally nor check acl
+		conn, err = fp.dialContext(ctx, network, hostPort)
+		if err != nil {
+			return conn, &ProxyError{S: err.Error(), Code: http.StatusBadGateway}
 		}
-		return conn, err, false
+		return conn, nil
 	}
 
 	if !fp.portIsAllowed(port) {
-		return nil, errors.New("port " + port + " is not allowed"), true
+		return nil, &ProxyError{S: "port " + port + " is not allowed", Code: http.StatusForbidden}
 	}
 
 	// in case IP was provided, net.LookupIP will simply return it
 	IPs, err := net.LookupIP(host)
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Lookup of %s failed: %v",
-			host, err)), false
+		return nil, &ProxyError{S: fmt.Sprintf("Lookup of %s failed: %v", host, err),
+			Code: http.StatusBadGateway}
 	}
 
 	// This is net.Dial's default behavior: if the host resolves to multiple IP addresses,
@@ -296,12 +284,12 @@ func (fp *ForwardProxy) dialRequestedAddress(r *http.Request) (net.Conn, error, 
 			continue
 		}
 
-		conn, err = fp.dial("tcp", hostPort)
+		conn, err = fp.dialContext(ctx, network, hostPort)
 		if err == nil {
-			return conn, err, false
+			return conn, nil
 		}
 	}
-	return nil, errors.New("No allowed IP addresses for " + host), true
+	return nil, &ProxyError{S: "No allowed IP addresses for " + host, Code: http.StatusForbidden}
 }
 
 func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, error) {
@@ -335,20 +323,17 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		return http.StatusHTTPVersionNotSupported, errors.New("Unsupported HTTP major version: " + strconv.Itoa(r.ProtoMajor))
 	}
 
-	targetConn, err, forbidden := fp.dialRequestedAddress(r)
-	if forbidden {
-		return http.StatusForbidden, err
+	ctx := context.Background()
+	if !fp.hideIP {
+		ctxHeader := make(http.Header)
+		for k, v := range r.Header {
+			if kL := strings.ToLower(k); kL == "forwarded" || kL == "x-forwarded-for" {
+				ctxHeader[k] = v
+			}
+		}
+		ctxHeader.Add("Forwarded", "for=\""+r.RemoteAddr+"\"")
+		ctx = context.WithValue(ctx, httpclient.ContextKeyHeader{}, ctxHeader)
 	}
-	if err != nil {
-		// failed, but not because it's forbidden
-		return http.StatusBadGateway, errors.New(fmt.Sprintf("dial %s failed: %v", r.URL.Host, err))
-	}
-	if targetConn == nil {
-		// safest to check both error and targetConn afterwards, in case fp.dial (potentially unstable
-		// from x/net/proxy) misbehaves and returns both nil or both non-nil
-		return http.StatusForbidden, errors.New("hostname " + r.URL.Hostname() + " is not allowed")
-	}
-	defer targetConn.Close()
 
 	if r.Method == http.MethodConnect {
 		if r.ProtoMajor == 2 {
@@ -356,6 +341,21 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 				return http.StatusBadRequest, errors.New("CONNECT request has :scheme or/and :path pseudo-header fields")
 			}
 		}
+
+		hostPort := r.URL.Host
+		if hostPort == "" {
+			hostPort = r.Host
+		}
+		targetConn, err := fp.dialContextCheckACL(ctx, "tcp", hostPort)
+		if err != nil {
+			return err.SplitCodeError()
+		}
+		if targetConn == nil {
+			// safest to check both error and targetConn afterwards, in case fp.dial (potentially unstable
+			// from x/net/proxy) misbehaves and returns both nil or both non-nil
+			return http.StatusForbidden, errors.New("hostname " + r.URL.Hostname() + " is not allowed")
+		}
+		defer targetConn.Close()
 
 		switch r.ProtoMajor {
 		case 1: // http1: hijack the whole flow
@@ -382,6 +382,9 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if r.URL.Host == "" {
 			r.URL.Host = r.Host
 		}
+		r.Proto = "HTTP/1.1"
+		r.ProtoMajor = 1
+		r.ProtoMinor = 1
 		r.RequestURI = ""
 
 		removeHopByHop(r.Header)
@@ -395,21 +398,58 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			r.Header.Add("Via", strconv.Itoa(r.ProtoMajor)+"."+strconv.Itoa(r.ProtoMinor)+" caddy")
 		}
 
-		if fp.responseTimeout != nil {
-			targetConn.SetDeadline(time.Now().Add(*fp.responseTimeout))
-		}
-
+		var err error
 		var response *http.Response
-		err = r.Write(targetConn)
-		if err != nil {
-			return http.StatusBadGateway, errors.New("failed to write http request: " + err.Error())
+		if fp.upstream == nil {
+			// non-upstream request uses httpTransport to reuse connections
+			if r.Body != nil &&
+				(r.Method == "GET" || r.Method == "HEAD" || r.Method == "OPTIONS" || r.Method == " TRACE") {
+				// make sure request is idempotent and could be retried by saving the Body
+				rBodyBuf, err := ioutil.ReadAll(r.Body)
+				if err != nil {
+					return http.StatusBadRequest, errors.New("failed to read request Body: " + err.Error())
+				}
+				r.GetBody = func() (io.ReadCloser, error) {
+					return ioutil.NopCloser(bytes.NewReader(rBodyBuf)), nil
+				}
+				r.Body, _ = r.GetBody()
+			}
+			response, err = fp.httpTransport.RoundTrip(r)
+		} else {
+			// Upstream requests don't interact well with Transport: connections could always be
+			// reused, but Transport thinks they go to different Hosts, so it spawns tons of
+			// useless connections. Just use dialContext, which will multiplex via single connection
+			if creds := fp.upstream.User.String(); creds != "" {
+				// set upstream credentials for the request, if needed
+				r.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(creds)))
+			}
+			if r.URL.Port() == "" {
+				r.URL.Host = net.JoinHostPort(r.URL.Host, "80")
+			}
+			upsConn, err := fp.dialContext(ctx, "tcp", r.URL.Host)
+			if err != nil {
+				return http.StatusBadGateway, errors.New("failed to dial upstream: " + err.Error())
+			}
+			err = r.Write(upsConn)
+			if err != nil {
+				return http.StatusBadGateway, errors.New("failed to write http request: " + err.Error())
+			}
+			response, err = http.ReadResponse(bufio.NewReader(upsConn), r)
+			if err != nil {
+				return http.StatusBadGateway, errors.New("failed to read http response: " + err.Error())
+			}
 		}
-		response, err = http.ReadResponse(bufio.NewReader(targetConn), r)
+		r.Body.Close()
+		if response != nil {
+			defer response.Body.Close()
+		}
 		if err != nil {
+			if p, ok := err.(*ProxyError); ok {
+				return p.SplitCodeError()
+			}
 			return http.StatusBadGateway, errors.New("failed to read http response: " + err.Error())
 		}
 
-		// TODO?: check 301 and 302 redirects against ACL and follow them
 		return 0, forwardResponse(w, response)
 	}
 }
@@ -429,7 +469,6 @@ func forwardResponse(w http.ResponseWriter, response *http.Response) error {
 	buf := bufferPool.Get().([]byte)
 	buf = buf[0:cap(buf)]
 	_, err := io.CopyBuffer(w, response.Body, buf)
-	response.Body.Close()
 	return err
 }
 
