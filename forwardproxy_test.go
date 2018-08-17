@@ -137,8 +137,7 @@ func getResourceViaProxyConn(proxyConn net.Conn, targetHost, resource, httpTarge
 		if err != nil {
 			return nil, err
 		}
-		r, e := clientConn.RoundTrip(&req)
-		return r, e
+		return clientConn.RoundTrip(&req)
 	case "HTTP/1.1":
 		req.ProtoMajor = 1
 		req.ProtoMinor = 1

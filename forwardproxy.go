@@ -103,13 +103,13 @@ func (fp *ForwardProxy) portIsAllowed(port string) bool {
 	return isAllowed
 }
 
-// Copies data targetWriter->clientReader and clientWriter->targetReader, and flushes as needed
-// Returns when clientWriter-> targetReader stream is done. Caddy should finish writing
-// targetWriter -> clientReader.
-func dualStream(targetWriter io.WriteCloser, clientReader io.ReadCloser,
-	clientWriter io.Writer, targetReader io.ReadCloser) error {
+// Copies data target->clientReader and clientWriter->target, and flushes as needed
+// Returns when clientWriter-> target stream is done.
+// Caddy should finish writing target -> clientReader.
+func dualStream(target net.Conn, clientReader io.ReadCloser,
+	clientWriter io.Writer) error {
 
-	stream := func(w io.Writer, r io.ReadCloser) error {
+	stream := func(w io.Writer, r io.Reader) error {
 		// copy bytes from r to w
 		buf := bufferPool.Get().([]byte)
 		buf = buf[0:cap(buf)]
@@ -122,8 +122,8 @@ func dualStream(targetWriter io.WriteCloser, clientReader io.ReadCloser,
 		return _err
 	}
 
-	go stream(targetWriter, clientReader)
-	return stream(clientWriter, targetReader)
+	go stream(target, clientReader)
+	return stream(clientWriter, target)
 }
 
 // Hijacks the connection from ResponseWriter, writes the response and proxies data between targetConn
@@ -164,7 +164,7 @@ func serveHijack(w http.ResponseWriter, targetConn net.Conn) (int, error) {
 		return http.StatusInternalServerError, errors.New("failed to send response to client: " + err.Error())
 	}
 
-	return 0, dualStream(targetConn, clientConn, clientConn, targetConn)
+	return 0, dualStream(targetConn, clientConn, clientConn)
 }
 
 // Returns nil error on successful credentials check.
@@ -367,7 +367,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			}
 			w.WriteHeader(http.StatusOK)
 			wFlusher.Flush()
-			return 0, dualStream(targetConn, r.Body, w, targetConn)
+			return 0, dualStream(targetConn, r.Body, w)
 		default:
 			panic("There was a check for http version, yet it's incorrect")
 		}
@@ -404,7 +404,8 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			if r.Body != nil &&
 				(r.Method == "GET" || r.Method == "HEAD" || r.Method == "OPTIONS" || r.Method == "TRACE") {
 				// make sure request is idempotent and could be retried by saving the Body
-				// none of those methods are supposed to have body, yet r.Body is usually set
+				// None of those methods are supposed to have body,
+				// but we still need to copy the r.Body, even if it's empty
 				rBodyBuf, err := ioutil.ReadAll(r.Body)
 				if err != nil {
 					return http.StatusBadRequest, errors.New("failed to read request Body: " + err.Error())
