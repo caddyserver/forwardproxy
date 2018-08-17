@@ -104,7 +104,7 @@ func (fp *ForwardProxy) portIsAllowed(port string) bool {
 }
 
 // Copies data targetWriter->clientReader and clientWriter->targetReader, and flushes as needed
-// Returns when both clientWriter-> targetReader stream is done. Caddy should finish writing
+// Returns when clientWriter-> targetReader stream is done. Caddy should finish writing
 // targetWriter -> clientReader.
 func dualStream(targetWriter io.WriteCloser, clientReader io.ReadCloser,
 	clientWriter io.Writer, targetReader io.ReadCloser) error {
@@ -245,7 +245,6 @@ func (fp *ForwardProxy) servePacFile(w http.ResponseWriter) (int, error) {
 
 // dialContextCheckACL enforces Access Control List and calls fp.DialContext
 func (fp *ForwardProxy) dialContextCheckACL(ctx context.Context, network, hostPort string) (net.Conn, *ProxyError) {
-	var err error
 	var conn net.Conn
 
 	if network != "tcp" && network != "tcp4" && network != "tcp6" {
@@ -284,7 +283,7 @@ func (fp *ForwardProxy) dialContextCheckACL(ctx context.Context, network, hostPo
 			continue
 		}
 
-		conn, err = fp.dialContext(ctx, network, hostPort)
+		conn, err = fp.dialContext(ctx, network, net.JoinHostPort(ip.String(), port))
 		if err == nil {
 			return conn, nil
 		}
@@ -403,8 +402,9 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		if fp.upstream == nil {
 			// non-upstream request uses httpTransport to reuse connections
 			if r.Body != nil &&
-				(r.Method == "GET" || r.Method == "HEAD" || r.Method == "OPTIONS" || r.Method == " TRACE") {
+				(r.Method == "GET" || r.Method == "HEAD" || r.Method == "OPTIONS" || r.Method == "TRACE") {
 				// make sure request is idempotent and could be retried by saving the Body
+				// none of those methods are supposed to have body, yet r.Body is usually set
 				rBodyBuf, err := ioutil.ReadAll(r.Body)
 				if err != nil {
 					return http.StatusBadRequest, errors.New("failed to read request Body: " + err.Error())
@@ -418,7 +418,8 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 		} else {
 			// Upstream requests don't interact well with Transport: connections could always be
 			// reused, but Transport thinks they go to different Hosts, so it spawns tons of
-			// useless connections. Just use dialContext, which will multiplex via single connection
+			// useless connections.
+			// Just use dialContext, which will multiplex via single connection, if http/2
 			if creds := fp.upstream.User.String(); creds != "" {
 				// set upstream credentials for the request, if needed
 				r.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(creds)))

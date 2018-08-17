@@ -278,10 +278,14 @@ func (h *http2Conn) Close() error {
 	return h.out.Close()
 }
 
+func (h *http2Conn) CloseConn() error {
+	return h.Conn.Close()
+}
+
 func (h *http2Conn) CloseWrite() error {
-	return h.out.Close()
+	return h.in.Close()
 }
 
 func (h *http2Conn) CloseRead() error {
-	return h.in.Close()
+	return h.out.Close()
 }

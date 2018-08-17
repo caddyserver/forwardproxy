@@ -274,7 +274,11 @@ func setup(c *caddy.Controller) error {
 	}
 	fp.dialContext = dialer.DialContext
 	fp.httpTransport.DialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
-		return fp.dialContextCheckACL(ctx, network, address)
+		conn, err := fp.dialContextCheckACL(ctx, network, address)
+		if err != nil {
+			return conn, err
+		}
+		return conn, nil
 	}
 
 	if fp.upstream != nil {

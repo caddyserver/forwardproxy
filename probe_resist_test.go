@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"testing"
@@ -360,35 +360,26 @@ func responsesAreEqual(res1, res2 *http.Response) error {
 		}
 	}
 	// Compare bodies
-	buf1 := make([]byte, 2048)
-	buf2 := make([]byte, 2048)
-	var n1, n2 int
-	var err1, err2 error
+	buf1, err1 := ioutil.ReadAll(res1.Body)
+	buf2, err2 := ioutil.ReadAll(res2.Body)
+	n1 := len(buf1)
+	n2 := len(buf2)
 	makeBodyError := func(s string) error {
 		return errors.New(fmt.Sprintf("Bodies are different: %s. n1 = %d, n2 = %d. err1 = %v, err2 = %v. buf1 = %s, buf2 = %s",
 			s, n1, n2, err1, err2, buf1[:n1], buf2[:n2]))
 	}
-	for {
-		n1, err1 = res1.Body.Read(buf1[:])
-		n2, err2 = res2.Body.Read(buf2[:n1])
-		buf1 = removeAddressesByte(buf1[:n1])
-		buf2 = removeAddressesByte(buf2[:n1])
-		for i := range buf1 {
-			if buf1[i] != buf2[i] {
-				return makeBodyError(fmt.Sprintf("Mismatched character %d", i))
-			}
+	if n2 != n1 {
+		return makeBodyError("Body sizes are different")
+	}
+	buf1 = removeAddressesByte(buf1[:n1])
+	buf2 = removeAddressesByte(buf2[:n1])
+	for i := range buf1 {
+		if buf1[i] != buf2[i] {
+			return makeBodyError(fmt.Sprintf("Mismatched character %d", i))
 		}
-		if err1 == io.EOF && err2 == io.EOF {
-			break
-		}
-		if err1 == io.EOF && err2 == nil {
-			_n, _ := res2.Body.Read(buf2[n1:])
-			n2 += _n
-			return makeBodyError("Body 2 is longer")
-		}
-		if err1 != nil || err2 != nil {
-			return makeBodyError("Unexpected Read errors")
-		}
+	}
+	if err1 != nil || err2 != nil {
+		return makeBodyError("Unexpected Read errors")
 	}
 	return nil
 }
