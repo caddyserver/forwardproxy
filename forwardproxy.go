@@ -106,9 +106,7 @@ func (fp *ForwardProxy) portIsAllowed(port string) bool {
 // Copies data target->clientReader and clientWriter->target, and flushes as needed
 // Returns when clientWriter-> target stream is done.
 // Caddy should finish writing target -> clientReader.
-func dualStream(target net.Conn, clientReader io.ReadCloser,
-	clientWriter io.Writer) error {
-
+func dualStream(target net.Conn, clientReader io.ReadCloser, clientWriter io.Writer) error {
 	stream := func(w io.Writer, r io.Reader) error {
 		// copy bytes from r to w
 		buf := bufferPool.Get().([]byte)
