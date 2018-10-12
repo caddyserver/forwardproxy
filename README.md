@@ -134,6 +134,31 @@ Supported schemes to remote host: https.
 Supported schemes to localhost: socks5, http, https(certificate check is ignored).  
 _Default: no upstream proxy._
 
+## Get forwardproxy
+#### Download prebuilt binary
+Binaries are at https://caddyserver.com/download  
+Don't forget to add "http.forwardproxy" plugin.
+
+#### Build from source
+
+0. Install latest stable Golang
+1. Download caddy webserver and forwardproxy plugin:
+   ```bash
+   go get -d -u -t github.com/caddyserver/forwardproxy/... github.com/mholt/caddy/...
+   ```
+2. Add 'import _ "github.com/caddyserver/forwardproxy/"' to caddy/main.go: 
+   ```bash
+   sed -i 's/^import/import _ "github\.com\/caddyserver\/forwardproxy"\nimport/' ${GOPATH:-~/go}/src/github.com/mholt/caddy/caddy/main.go
+   ```
+3. Build it:
+   ```bash
+   cd ${GOPATH:-~/go}/src/github.com/mholt/caddy/caddy/
+   go build
+   ```
+
+If it won't build, try reinstalling Golang, removing $GOPATH, you know, the usual dance.
+If version of caddy in trunk does not work, you can try building latest [stable release](https://github.com/mholt/caddy/releases).
+
 ## Client Configuration
 
 Please be aware that client support varies widely, and there are edge cases where clients may not use the proxy when it should or could. It's up to you to be aware of these limitations.
