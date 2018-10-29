@@ -4,7 +4,13 @@
 [![Join the chat at https://gitter.im/forwardproxy/Lobby](https://badges.gitter.im/forwardproxy/Lobby.svg)](https://gitter.im/forwardproxy/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 
-This plugin enables [Caddy](https://caddyserver.com) to act as a forward proxy (as opposed to reverse proxy, Caddy's standard `proxy` directive) for HTTP/2.0 and HTTP/1.1 requests (HTTP/1.0 might work, but is untested).
+This plugin enables [Caddy](https://caddyserver.com) to act as a forward proxy, with support for HTTP/2.0 and HTTP/1.1 requests. HTTP/2.0 will usually improve performance due to multiplexing.
+
+Forward proxy plugin includes common features like Access Control Lists and authentication, as well as some unique features to assist with security and privacy. Default configuration of forward proxy is compliant with existing HTTP standards, but some features force plugin to exhibit non-standard but non-breaking behavior to preserve privacy.
+
+Probing resistance—one of the signature features of this plugin—attempts to hide the fact that your webserver is also a forward proxy, helping the proxy to stay under the radar. Eventually, forwardproxy plugin implemented a simple *reverse* proxy (`upstream https://user:password@next-hop.com` in Caddyfile) just so users may take advantage of `probe_resistance` when they need a reverse proxy (for example, to build a chain of proxies). Reverse proxy implementation will stay simple, and if you need a powerful reverse proxy, look into Caddy's standard `proxy` directive.
+
+For a complete list of features and their usage, see Caddyfile syntax:
 
 ## Caddyfile Syntax (Server Configuration)
 
@@ -19,7 +25,7 @@ forwardproxy {
     ports     80 443
     hide_ip
     hide_via
-    probe_resistance secretlink.localhost
+    probe_resistance secret-link-kWWL9Q.localhost
     serve_pac        /secret-proxy.pac
     response_timeout 30
     dial_timeout     30
@@ -31,7 +37,7 @@ forwardproxy {
       allowfile /path/to/whitelist.txt
       denyfile  /path/to/blacklist.txt
       allow     all
-      deny      all // unreachable rule, remaining requests are matched by `allow all`
+      deny      all # unreachable rule, remaining requests are matched by `allow all` above
     }
 }
 ```
