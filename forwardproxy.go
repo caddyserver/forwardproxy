@@ -311,7 +311,7 @@ func (fp *ForwardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) (int, 
 			httpserver.WriteSiteNotFound(w, r)
 			return 0, authErr // current Caddy behavior without forwardproxy
 		} else {
-			w.Header().Set("Proxy-Authenticate", "Basic")
+			w.Header().Set("Proxy-Authenticate", "Basic realm=\"Caddy Secure Web Proxy\"")
 			return http.StatusProxyAuthRequired, authErr
 		}
 	}
