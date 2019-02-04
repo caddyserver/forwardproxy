@@ -130,25 +130,25 @@ func (c *caddyTestServer) StartTestServer() {
 }
 
 func TestMain(m *testing.M) {
-	caddyForwardProxy = caddyTestServer{addr: "127.0.0.2:1984", root: "./test/forwardproxy",
+	caddyForwardProxy = caddyTestServer{addr: "127.0.19.84:1984", root: "./test/forwardproxy",
 		directives:   []string{"tls self_signed"},
 		proxyEnabled: true, proxyDirectives: []string{"serve_pac",
 			"acl {\nallow all\n}"}}
 	caddyForwardProxy.StartTestServer()
 
-	caddyForwardProxyAuth = caddyTestServer{addr: "127.0.0.2:4891", root: "./test/forwardproxy",
+	caddyForwardProxyAuth = caddyTestServer{addr: "127.0.0.1:4891", root: "./test/forwardproxy",
 		directives:   []string{"tls self_signed"},
 		proxyEnabled: true, proxyDirectives: []string{"basicauth test pass",
 			"acl {\nallow all\n}"}}
 	caddyForwardProxyAuth.StartTestServer()
 
-	caddyHTTPForwardProxyAuth = caddyTestServer{addr: "127.0.0.2:6973", root: "./test/forwardproxy",
+	caddyHTTPForwardProxyAuth = caddyTestServer{addr: "127.0.69.73:6973", root: "./test/forwardproxy",
 		directives:   []string{"tls off"},
 		proxyEnabled: true, proxyDirectives: []string{"basicauth test pass",
 			"acl {\nallow all\n}"}}
 	caddyHTTPForwardProxyAuth.StartTestServer()
 
-	caddyForwardProxyProbeResist = caddyTestServer{addr: "127.0.0.2:8888", root: "./test/forwardproxy",
+	caddyForwardProxyProbeResist = caddyTestServer{addr: "127.0.88.88:8888", root: "./test/forwardproxy",
 		directives: []string{"tls self_signed"}, HTTPRedirectPort: "8880",
 		proxyEnabled: true, proxyDirectives: []string{"basicauth test pass",
 			"probe_resistance test.localhost",
@@ -156,13 +156,13 @@ func TestMain(m *testing.M) {
 			"acl {\nallow all\n}"}}
 	caddyForwardProxyProbeResist.StartTestServer()
 
-	caddyDummyProbeResist = caddyTestServer{addr: "127.0.0.2:9999", root: "./test/forwardproxy",
+	caddyDummyProbeResist = caddyTestServer{addr: "127.0.99.99:9999", root: "./test/forwardproxy",
 		directives: []string{"tls self_signed"}, HTTPRedirectPort: "9980",
 		proxyEnabled: false}
 	caddyDummyProbeResist.StartTestServer()
 
 	// 127.0.0.1 and localhost are both used to avoid Caddy matching and routing proxy requests internally
-	caddyTestTarget = caddyTestServer{addr: "localhost:6451", root: "./test/index",
+	caddyTestTarget = caddyTestServer{addr: "127.0.64.51:6451", root: "./test/index",
 		directives:   []string{},
 		proxyEnabled: false}
 	caddyTestTarget.StartTestServer()
@@ -172,26 +172,26 @@ func TestMain(m *testing.M) {
 		proxyEnabled: false}
 	caddyHTTPTestTarget.StartTestServer()
 
-	caddyAuthedUpstreamEnter = caddyTestServer{addr: "127.0.0.2:6585", root: "./test/upstreamingproxy",
+	caddyAuthedUpstreamEnter = caddyTestServer{addr: "127.0.65.25:6585", root: "./test/upstreamingproxy",
 		directives:   []string{"tls self_signed"},
 		proxyEnabled: true, proxyDirectives: []string{"upstream https://test:pass@127.0.0.1:4891",
 			"basicauth upstreamtest upstreampass"}}
 	caddyAuthedUpstreamEnter.StartTestServer()
 
-	caddyForwardProxyWhiteListing = caddyTestServer{addr: "127.0.0.2:8776", root: "./test/forwardproxy",
+	caddyForwardProxyWhiteListing = caddyTestServer{addr: "127.0.87.76:8776", root: "./test/forwardproxy",
 		directives:   []string{"tls self_signed"},
-		proxyEnabled: true, proxyDirectives: []string{"acl {\nallow localhost\n deny all\n}",
+		proxyEnabled: true, proxyDirectives: []string{"acl {\nallow 127.0.64.51\n deny all\n}",
 			"ports 6451"}}
 	caddyForwardProxyWhiteListing.StartTestServer()
 
-	caddyForwardProxyBlackListing = caddyTestServer{addr: "127.0.0.2:6676", root: "./test/forwardproxy",
+	caddyForwardProxyBlackListing = caddyTestServer{addr: "127.0.66.76:6676", root: "./test/forwardproxy",
 		directives:   []string{"tls self_signed"},
 		proxyEnabled: true, proxyDirectives: []string{"acl {\ndeny " + blacklistedIPv4 + "/30\n" +
 			"deny " + blacklistedIPv6 + "\nallow all\n}"},
 	}
 	caddyForwardProxyBlackListing.StartTestServer()
 
-	caddyForwardProxyNoBlacklistOverride = caddyTestServer{addr: "127.0.0.2:6679", root: "./test/forwardproxy",
+	caddyForwardProxyNoBlacklistOverride = caddyTestServer{addr: "127.0.66.79:6679", root: "./test/forwardproxy",
 		directives:   []string{"tls self_signed"},
 		proxyEnabled: true, proxyDirectives: []string{}}
 	caddyForwardProxyNoBlacklistOverride.StartTestServer()
