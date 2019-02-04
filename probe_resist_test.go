@@ -197,10 +197,6 @@ func TestConnectAuthWrongProbeResist(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if responseProbeResist.StatusCode != http.StatusOK {
-						t.Fatalf("Expected response: 200 StatusOK, Got: %d\n",
-							responseProbeResist.StatusCode)
-					}
 					if err = responsesAreEqual(responseProbeResist, responseReference); err != nil {
 						t.Fatal(err)
 					}
