@@ -13,4 +13,4 @@ install:
 
 script:
   - go test -race -v .
-  - golangci-lint run -E gofmt -E goimports -E misspell -E ineffassign -E staticcheck -E gosimple 
+  - golangci-lint run -E gofmt -E goimports -E misspell -E ineffassign -E staticcheck -E gosimple -D errcheck
