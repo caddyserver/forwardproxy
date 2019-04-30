@@ -1,17 +1,16 @@
 language: go
 
 go:
- - 1.10.x
+ - 1.12.x
+env:
+ - GO111MODULE=on
 
 dist: trusty
 
 install:
-  - go get -t ./...
-  - go get golang.org/x/lint/golint
-  # Install gometalinter
-  - go get github.com/alecthomas/gometalinter
+  - go get -v -t -d ./...
+  - go get -v github.com/golangci/golangci-lint/cmd/golangci-lint
 
 script:
- - go test -race -v .
- - gometalinter --install
- - gometalinter --disable-all -E vet -E gofmt -E misspell -E ineffassign --tests .
+  - go test -race -v .
+  - golangci-lint run -E gofmt -E goimports -E misspell -E ineffassign -E staticcheck -E gosimple 
