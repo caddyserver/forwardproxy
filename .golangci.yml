@@ -1,8 +1,4 @@
-# Linter, that we were forced to switch to, doesn't allow disabling
-# of linting of test files as a cli argument.
-# (It does have useless --tests flag to enable the already enabled
-# linting of tests, while --tests false is interpreted incorrectly)
-#
-# Just make a file config for it and hope that one day all software will burn
+# golangci linter currently requires a config file to 
+# disable checking of the test files
 run:
   tests: false

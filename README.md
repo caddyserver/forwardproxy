@@ -147,23 +147,11 @@ Don't forget to add "http.forwardproxy" plugin.
 
 #### Build from source
 
-0. Install latest stable Golang
-1. Download caddy webserver and forwardproxy plugin:
-   ```bash
-   go get -d -u -t github.com/caddyserver/forwardproxy/... github.com/mholt/caddy/...
-   ```
-2. Add 'import _ "github.com/caddyserver/forwardproxy/"' to caddy/main.go: 
-   ```bash
-   sed -i 's/^import/import _ "github\.com\/caddyserver\/forwardproxy"\nimport/' ${GOPATH:-~/go}/src/github.com/mholt/caddy/caddy/main.go
-   ```
-3. Build it:
-   ```bash
-   cd ${GOPATH:-~/go}/src/github.com/mholt/caddy/caddy/
-   go build
-   ```
-
-If it won't build, try reinstalling Golang, removing $GOPATH, you know, the usual dance.
-If version of caddy in trunk does not work, you can try building latest [stable release](https://github.com/mholt/caddy/releases).
+0. Install latest Golang 1.12 or above and set export GO111MODULE=on
+1. ```bash
+   go install github.com/caddyserver/forwardproxy/cmd/caddy
+   ```   
+   Built `caddy` binary will be stored in $GOPATH/bin.  
 
 ## Client Configuration
 
