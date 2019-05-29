@@ -212,7 +212,7 @@ func serveHiddenPage(w http.ResponseWriter, authErr error) (int, error) {
 
 	w.Header().Set("Content-Type", "text/html")
 	if authErr != nil {
-		w.Header().Set("Proxy-Authenticate", "Basic")
+		w.Header().Set("Proxy-Authenticate", "Basic realm=\"Caddy Secure Web Proxy\"")
 		w.WriteHeader(http.StatusProxyAuthRequired)
 		w.Write([]byte(fmt.Sprintf(hiddenPage, AuthFail)))
 		return 0, authErr
