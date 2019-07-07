@@ -28,11 +28,11 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/caddyserver/caddy/caddyhttp/header"
+	_ "github.com/caddyserver/caddy/caddyhttp/httpserver"
+	_ "github.com/caddyserver/caddy/caddyhttp/redirect"
+	_ "github.com/caddyserver/caddy/caddyhttp/root"
 	"github.com/caddyserver/forwardproxy/httpclient"
-	_ "github.com/mholt/caddy/caddyhttp/header"
-	_ "github.com/mholt/caddy/caddyhttp/httpserver"
-	_ "github.com/mholt/caddy/caddyhttp/redirect"
-	_ "github.com/mholt/caddy/caddyhttp/root"
 	"golang.org/x/net/http2"
 )
 

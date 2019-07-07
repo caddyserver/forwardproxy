@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mholt/caddy"
+	"github.com/caddyserver/caddy"
 )
 
 var credentialsEmpty = ""
@@ -95,7 +95,7 @@ func (c *caddyTestServer) marshal() []byte {
 	mainBlock = append(mainBlock, "}")
 	if len(c.HTTPRedirectPort) > 0 {
 		// TODO: this is not good enough, since `func redirPlaintextHost(cfg *SiteConfig) *SiteConfig`
-		// https://github.com/mholt/caddy/blob/master/caddyhttp/httpserver/https.go#L142 can change in future
+		// https://github.com/caddyserver/caddy/blob/master/caddyhttp/httpserver/https.go#L142 can change in future
 		// and we won't know.
 		redirectBlock := []string{"http://*:" + c.HTTPRedirectPort + " {",
 			"redir https://" + c.addr + "{uri}",
