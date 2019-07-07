@@ -17,7 +17,7 @@ package forwardproxy
 import (
 	"testing"
 
-	"github.com/mholt/caddy"
+	"github.com/caddyserver/caddy"
 )
 
 func TestSetup(t *testing.T) {
