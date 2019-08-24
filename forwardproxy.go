@@ -11,9 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-// Caching is purposefully ignored. Pipelining is expected to work, but doesn't have to. Might be (ab)used to get
-// into internal networks.
+//
+// Caching is purposefully ignored.
 package forwardproxy
 
 import (
