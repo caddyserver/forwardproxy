@@ -25,7 +25,7 @@ forwardproxy {
     ports     80 443
     hide_ip
     hide_via
-    probe_resistance secret-link-kWWL9Q.localhost
+    probe_resistance secret-link-kWWL9Q.com # alternatively you can use real domain, such as caddyserver.com
     serve_pac        /secret-proxy.pac
     response_timeout 30
     dial_timeout     30
@@ -61,7 +61,6 @@ allows you to preconfigure credentials, and sends credentials preemptively, you 
 If your proxy client does not preemptively send credentials, you will have to visit your secret link in your browser to trigger the authentication.
 Make sure that specified domain name is visitable, does not contain uppercase characters, does not start with dot, etc.
 Only this address will trigger a 407 response, prompting browsers to request credentials from user and cache them for the rest of the session.
-It is possible to use any top level domain, but for secrecy reasons it is highly recommended to use `.localhost`.  
 _Default: no probing resistance._
 
 ##### Privacy
