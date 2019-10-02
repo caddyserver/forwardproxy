@@ -25,7 +25,7 @@ forwardproxy {
     ports     80 443
     hide_ip
     hide_via
-    probe_resistance secret-link-kWWL9Q.com # alternatively you can use real domain, such as caddyserver.com
+    probe_resistance secret-link-kWWL9Q.com # alternatively you can use a real domain, such as caddyserver.com
     serve_pac        /secret-proxy.pac
     response_timeout 30
     dial_timeout     30
@@ -101,8 +101,8 @@ acl_directive may be:
   - **deny all**
   
   For hostname, you can specify `*.` as a prefix to match domain and subdomains. For example,
-  `*.caddyserver.com` will match caddyserver.com, subdomain.caddyserver.com, but not fakecaddyserver.com.
-  Note that hostname rule, matched early in the chain, will override later IP rules,
+  `*.caddyserver.com` will match `caddyserver.com`, `subdomain.caddyserver.com`, but not `fakecaddyserver.com`.
+  Note that hostname rules, matched early in the chain, will override later IP rules,
   so it is advised to put IP rules first, unless domains are highly trusted and should override the
   IP rules. Also note that domain-based blacklists are easily circumventable by directly specifying the IP.  
   For `allowfile`/`denyfile` directives, syntax is the same, and each entry must be separated by newline.  
@@ -131,18 +131,18 @@ _Default: 20 seconds._
 Generate (in-memory) and serve a [Proxy Auto-Config](https://en.wikipedia.org/wiki/Proxy_auto-config) file on given path. If no path is provided, the PAC file will be served at `/proxy.pac`. NOTE: If you enable probe_resistance, your PAC file should also be served at a secret location; serving it at a predictable path can easily defeat probe resistance.  
 _Default: no PAC file will be generated or served by Caddy (you still can manually create and serve proxy.pac like a regular file)._
 
-- **upstream [https://username:password@upstreamproxy.site:443]**  
+- **upstream [`https://username:password@upstreamproxy.site:443`]**  
 Sets upstream proxy to route all forwardproxy requests through it.
 This setting does not affect non-forwardproxy requests nor requests with wrong credentials.
 Upstream is incompatible with `acl` and `ports` subdirectives.  
 Supported schemes to remote host: https.  
-Supported schemes to localhost: socks5, http, https(certificate check is ignored).  
+Supported schemes to localhost: socks5, http, https (certificate check is ignored).  
 _Default: no upstream proxy._
 
 ## Get forwardproxy
 #### Download prebuilt binary
 Binaries are at https://caddyserver.com/download  
-Don't forget to add "http.forwardproxy" plugin.
+Don't forget to add `http.forwardproxy` plugin.
 
 #### Build from source
 
@@ -159,7 +159,6 @@ Please be aware that client support varies widely, and there are edge cases wher
 The basic configuration is simply to use your site address and port (usually for all protocols - HTTP, HTTPS, etc). You can also specify the .pac file if you enabled that.
 
 Read [this blog post](https://sfrolov.io/2017/08/secure-web-proxy-client-en) about how to configure your specific client.
-
 
 ## License
 
