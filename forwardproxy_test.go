@@ -17,54 +17,65 @@ package forwardproxy
 import (
 	"bufio"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 
-	_ "github.com/caddyserver/caddy/caddyhttp/header"
-	_ "github.com/caddyserver/caddy/caddyhttp/httpserver"
-	_ "github.com/caddyserver/caddy/caddyhttp/redirect"
-	_ "github.com/caddyserver/caddy/caddyhttp/root"
 	"github.com/caddyserver/forwardproxy/httpclient"
 	"golang.org/x/net/http2"
 )
 
-func dial(proxyAddr, httpProxyVer string, useTls bool) (net.Conn, error) {
-	if useTls {
-		return tls.Dial("tcp", proxyAddr, &tls.Config{InsecureSkipVerify: true,
-			NextProtos: []string{httpVersionToAlpn[httpProxyVer]}})
-	} else {
-		return net.Dial("tcp", proxyAddr)
+// localDialAddr changes the host portion of addr to be loopback,
+// which is useful since we're just testing.
+func localDialAddr(addr string) string {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		panic(err)
 	}
+	return net.JoinHostPort("127.0.0.1", port)
 }
 
-func getViaProxy(targetHost, resource, proxyAddr, httpProxyVer, proxyCredentials string, useTls bool) (*http.Response, error) {
-	proxyConn, err := dial(proxyAddr, httpProxyVer, useTls)
+func dial(proxyAddr, httpProxyVer string, useTLS bool) (net.Conn, error) {
+	// always dial localhost for testing purposes
+	dialAddr := localDialAddr(proxyAddr)
+	if useTLS {
+		return tls.Dial("tcp", dialAddr, &tls.Config{
+			InsecureSkipVerify: true,
+			NextProtos:         []string{httpVersionToALPN[httpProxyVer]},
+		})
+	}
+	return net.Dial("tcp", dialAddr)
+}
+
+func getViaProxy(targetHost, resource, proxyAddr, httpProxyVer, proxyCredentials string, useTLS, dialLocal bool) (*http.Response, error) {
+	proxyConn, err := dial(proxyAddr, httpProxyVer, useTLS)
 	if err != nil {
 		return nil, err
 	}
-	return getResourceViaProxyConn(proxyConn, targetHost, resource, httpProxyVer, proxyCredentials)
+	return getResourceViaProxyConn(proxyConn, targetHost, resource, httpProxyVer, proxyCredentials, dialLocal)
 }
 
 // if connect is not successful - that response is returned, otherwise the requested resource
-func connectAndGetViaProxy(targetHost, resource, proxyAddr, httpTargetVer, proxyCredentials, httpProxyVer string, useTls bool) (*http.Response, error) {
-	proxyConn, err := dial(proxyAddr, httpProxyVer, useTls)
+func connectAndGetViaProxy(targetHost, resource, proxyAddr, httpTargetVer, proxyCredentials, httpProxyVer string, useTLS, dialLocal bool) (*http.Response, error) {
+	proxyConn, err := dial(proxyAddr, httpProxyVer, useTLS)
 	if err != nil {
 		return nil, err
 	}
 
-	req := http.Request{Header: make(http.Header)}
+	req := &http.Request{Header: make(http.Header)}
 	if len(proxyCredentials) > 0 {
 		req.Header.Set("Proxy-Authorization", proxyCredentials)
 	}
-	req.Host = targetHost
+	if dialLocal {
+		req.Host = localDialAddr(targetHost)
+	} else {
+		req.Host = targetHost
+	}
 	req.URL, err = url.Parse("https://" + req.Host)
 	if err != nil {
 		return nil, err
@@ -85,7 +96,7 @@ func connectAndGetViaProxy(targetHost, resource, proxyAddr, httpTargetVer, proxy
 		if err != nil {
 			return nil, err
 		}
-		resp, err = clientConn.RoundTrip(&req)
+		resp, err = clientConn.RoundTrip(req)
 		if err != nil {
 			return resp, err
 		}
@@ -94,7 +105,7 @@ func connectAndGetViaProxy(targetHost, resource, proxyAddr, httpTargetVer, proxy
 		req.ProtoMajor = 1
 		req.ProtoMinor = 1
 		req.Write(proxyConn)
-		resp, err = http.ReadResponse(bufio.NewReader(proxyConn), &req)
+		resp, err = http.ReadResponse(bufio.NewReader(proxyConn), req)
 		if err != nil {
 			return resp, err
 		}
@@ -109,18 +120,22 @@ func connectAndGetViaProxy(targetHost, resource, proxyAddr, httpTargetVer, proxy
 		return resp, err
 	}
 
-	return getResourceViaProxyConn(proxyConn, targetHost, resource, httpTargetVer, proxyCredentials)
+	return getResourceViaProxyConn(proxyConn, targetHost, resource, httpTargetVer, proxyCredentials, dialLocal)
 }
 
-func getResourceViaProxyConn(proxyConn net.Conn, targetHost, resource, httpTargetVer, proxyCredentials string) (*http.Response, error) {
+func getResourceViaProxyConn(proxyConn net.Conn, targetHost, resource, httpTargetVer, proxyCredentials string, dialLocal bool) (*http.Response, error) {
 	var err error
 
-	req := http.Request{Header: make(http.Header)}
+	req := &http.Request{Header: make(http.Header)}
 	if len(proxyCredentials) > 0 {
 		req.Header.Set("Proxy-Authorization", proxyCredentials)
 	}
-	req.Host = targetHost
-	req.URL, err = url.Parse("http://" + req.Host + resource)
+	if dialLocal {
+		req.Host = localDialAddr(targetHost)
+	} else {
+		req.Host = targetHost
+	}
+	req.URL, err = url.Parse("http://" + targetHost + resource)
 	if err != nil {
 		return nil, err
 	}
@@ -137,14 +152,14 @@ func getResourceViaProxyConn(proxyConn net.Conn, targetHost, resource, httpTarge
 		if err != nil {
 			return nil, err
 		}
-		return clientConn.RoundTrip(&req)
+		return clientConn.RoundTrip(req)
 	case "HTTP/1.1":
 		req.ProtoMajor = 1
 		req.ProtoMinor = 1
 		t := http.Transport{Dial: func(network, addr string) (net.Conn, error) {
 			return proxyConn, nil
 		}}
-		return t.RoundTrip(&req)
+		return t.RoundTrip(req)
 	default:
 		panic("proxy ver: " + httpTargetVer)
 	}
@@ -165,30 +180,26 @@ func responseExpected(res *http.Response, expectedResponse []byte) error {
 			panic(err)
 		}
 		if nTotal == responseLen {
-			return errors.New(fmt.Sprintf("nTotal == responseLen, but haven't seen io.EOF. Expected response: %s\nGot: %s\n",
-				expectedResponse, response))
+			return fmt.Errorf("nTotal == responseLen, but haven't seen io.EOF. Expected response: %s\nGot: %s",
+				expectedResponse, response)
 		}
 	}
 	response = response[:nTotal]
 	if len(expectedResponse) != len(response) {
-		return errors.New(fmt.Sprintf("Expected length: %d. Got thus far: %d. Expected response: %s\nGot: %s\n",
-			len(expectedResponse), len(response), expectedResponse, response))
+		return fmt.Errorf("expected length: %d. Got thus far: %d. Expected response: %s\nGot: %s",
+			len(expectedResponse), len(response), expectedResponse, response)
 	}
 	for i := range response {
 		if response[i] != expectedResponse[i] {
-			return errors.New(fmt.Sprintf("Response mismatch at character #%d. Expected response: %s\nGot: %s\n",
-				i, expectedResponse, response))
+			return fmt.Errorf("response mismatch at character #%d. Expected response: %s\nGot: %s",
+				i, expectedResponse, response)
 		}
 	}
 	return nil
 }
 
 func TestPassthrough(t *testing.T) {
-	tr := &http.Transport{
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-		ResponseHeaderTimeout: 2 * time.Second,
-	}
-	client := &http.Client{Transport: tr, Timeout: 2 * time.Second}
+	client := &http.Client{Transport: testTransport, Timeout: 2 * time.Second}
 	resp, err := client.Get("https://" + caddyForwardProxy.addr)
 	if err != nil {
 		t.Fatal(err)
@@ -212,10 +223,10 @@ func TestPassthrough(t *testing.T) {
 }
 
 func TestGETNoAuth(t *testing.T) {
-	useTls := true
-	for _, httpProxyVer := range testHttpProxyVersions {
+	const useTLS, dialLocal = true, false
+	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxy.addr, httpProxyVer, credentialsEmpty, useTls)
+			response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxy.addr, httpProxyVer, credentialsEmpty, useTLS, dialLocal)
 			if err != nil {
 				t.Fatal(err)
 			} else if err = responseExpected(response, caddyHTTPTestTarget.contents[resource]); err != nil {
@@ -226,10 +237,10 @@ func TestGETNoAuth(t *testing.T) {
 }
 
 func TestGETAuthCorrect(t *testing.T) {
-	useTls := true
-	for _, httpProxyVer := range testHttpProxyVersions {
+	const useTLS, dialLocal = true, false
+	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpProxyVer, credentialsCorrect, useTls)
+			response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpProxyVer, credentialsCorrect, useTLS, dialLocal)
 			if err != nil {
 				t.Fatal(err)
 			} else if err = responseExpected(response, caddyHTTPTestTarget.contents[resource]); err != nil {
@@ -240,11 +251,11 @@ func TestGETAuthCorrect(t *testing.T) {
 }
 
 func TestGETAuthWrong(t *testing.T) {
-	useTls := true
+	const useTLS, dialLocal = true, false
 	for _, wrongCreds := range credentialsWrong {
-		for _, httpProxyVer := range testHttpProxyVersions {
+		for _, httpProxyVer := range testHTTPProxyVersions {
 			for _, resource := range testResources {
-				response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpProxyVer, wrongCreds, useTls)
+				response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpProxyVer, wrongCreds, useTLS, dialLocal)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -258,11 +269,11 @@ func TestGETAuthWrong(t *testing.T) {
 }
 
 func TestProxySelfGet(t *testing.T) {
-	useTls := true
+	const useTLS, dialLocal = true, false
 	// GETNoAuth to self
-	for _, httpTargetVer := range testHttpTargetVersions {
+	for _, httpTargetVer := range testHTTPTargetVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(caddyForwardProxy.addr, resource, caddyForwardProxy.addr, httpTargetVer, credentialsEmpty, useTls)
+			response, err := getViaProxy(caddyForwardProxy.addr, resource, caddyForwardProxy.addr, httpTargetVer, credentialsEmpty, useTLS, dialLocal)
 			if err != nil {
 				t.Fatal(err)
 			} else if err = responseExpected(response, caddyForwardProxy.contents[resource]); err != nil {
@@ -272,9 +283,9 @@ func TestProxySelfGet(t *testing.T) {
 	}
 
 	// GETAuthCorrect to self
-	for _, httpTargetVer := range testHttpTargetVersions {
+	for _, httpTargetVer := range testHTTPTargetVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(caddyForwardProxyAuth.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, credentialsCorrect, useTls)
+			response, err := getViaProxy(caddyForwardProxyAuth.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, credentialsCorrect, useTLS, dialLocal)
 			if err != nil {
 				t.Fatal(err)
 			} else if err = responseExpected(response, caddyForwardProxyAuth.contents[resource]); err != nil {
@@ -289,11 +300,11 @@ func TestProxySelfGet(t *testing.T) {
 // Low priority since this is a functionality issue, not security, and it would be easily caught in the wild.
 
 func TestConnectNoAuth(t *testing.T) {
-	useTls := true
-	for _, httpProxyVer := range testHttpProxyVersions {
-		for _, httpTargetVer := range testHttpTargetVersions {
+	const useTLS, dialLocal = true, true
+	for _, httpProxyVer := range testHTTPProxyVersions {
+		for _, httpTargetVer := range testHTTPTargetVersions {
 			for _, resource := range testResources {
-				response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxy.addr, httpTargetVer, credentialsEmpty, httpProxyVer, useTls)
+				response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxy.addr, httpTargetVer, credentialsEmpty, httpProxyVer, useTLS, dialLocal)
 				if err != nil {
 					t.Fatal(err)
 				} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
@@ -305,11 +316,11 @@ func TestConnectNoAuth(t *testing.T) {
 }
 
 func TestConnectAuthCorrect(t *testing.T) {
-	useTls := true
-	for _, httpProxyVer := range testHttpProxyVersions {
-		for _, httpTargetVer := range testHttpTargetVersions {
+	const useTLS, dialLocal = true, true
+	for _, httpProxyVer := range testHTTPProxyVersions {
+		for _, httpTargetVer := range testHTTPTargetVersions {
 			for _, resource := range testResources {
-				response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, credentialsCorrect, httpProxyVer, useTls)
+				response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, credentialsCorrect, httpProxyVer, useTLS, dialLocal)
 				if err != nil {
 					t.Fatal(httpProxyVer, httpTargetVer, err)
 				} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
@@ -321,18 +332,18 @@ func TestConnectAuthCorrect(t *testing.T) {
 }
 
 func TestConnectAuthWrong(t *testing.T) {
-	useTls := true
+	const useTLS, dialLocal = true, false
 	for _, wrongCreds := range credentialsWrong {
-		for _, httpProxyVer := range testHttpProxyVersions {
-			for _, httpTargetVer := range testHttpTargetVersions {
+		for _, httpProxyVer := range testHTTPProxyVersions {
+			for _, httpTargetVer := range testHTTPTargetVersions {
 				for _, resource := range testResources {
-					response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, wrongCreds, httpProxyVer, useTls)
+					response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS, dialLocal)
 					if err != nil {
 						t.Fatal(err)
 					}
 					if response.StatusCode != http.StatusProxyAuthRequired {
-						t.Fatalf("Expected response: 407 StatusProxyAuthRequired, Got: %d %s\n",
-							response.StatusCode, response.Status)
+						t.Fatalf("Expected response: 407 StatusProxyAuthRequired, Got: %d %s (wrongCreds=%s httpProxyVer=%s httpTargetVer=%s resource=%s)",
+							response.StatusCode, response.Status, wrongCreds, httpProxyVer, httpTargetVer, resource)
 					}
 				}
 			}
@@ -341,17 +352,12 @@ func TestConnectAuthWrong(t *testing.T) {
 }
 
 func TestPAC(t *testing.T) {
-	tr := &http.Transport{
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-		ResponseHeaderTimeout: 2 * time.Second,
-	}
-	client := &http.Client{Transport: tr, Timeout: 2 * time.Second}
+	client := &http.Client{Transport: testTransport, Timeout: 2 * time.Second}
 	resp, err := client.Get("https://" + caddyForwardProxy.addr + "/proxy.pac")
 	if err != nil {
 		t.Fatal(err)
 	}
-	splitAddr := strings.Split(caddyForwardProxy.addr, ":")
-	if err = responseExpected(resp, []byte(fmt.Sprintf(pacFile, splitAddr[0], splitAddr[1]))); err != nil {
+	if err = responseExpected(resp, []byte(fmt.Sprintf(pacFile, caddyForwardProxy.addr))); err != nil {
 		t.Fatal(err)
 	}
 
@@ -359,20 +365,19 @@ func TestPAC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	splitAddr = strings.Split(caddyForwardProxyProbeResist.addr, ":")
-	if err = responseExpected(resp, []byte(fmt.Sprintf(pacFile, splitAddr[0], splitAddr[1]))); err != nil {
+	if err = responseExpected(resp, []byte(fmt.Sprintf(pacFile, caddyForwardProxyProbeResist.addr))); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestCONNECTViaUpstream(t *testing.T) {
-	useTls := true
+	const useTLS, dialLocal = true, true
 	for range make([]byte, 5) { // do several times to test http2 connection reuse
-		for _, httpProxyVer := range testHttpProxyVersions {
-			for _, httpTargetVer := range testHttpTargetVersions {
+		for _, httpProxyVer := range testHTTPProxyVersions {
+			for _, httpTargetVer := range testHTTPTargetVersions {
 				for _, resource := range testResources {
 					response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyAuthedUpstreamEnter.addr,
-						httpTargetVer, credentialsUpstreamCorrect, httpProxyVer, useTls)
+						httpTargetVer, credentialsUpstreamCorrect, httpProxyVer, useTLS, dialLocal)
 					if err != nil {
 						t.Fatal(err)
 					} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
@@ -385,12 +390,12 @@ func TestCONNECTViaUpstream(t *testing.T) {
 }
 
 func TestGETViaUpstream(t *testing.T) {
-	useTls := true
+	const useTLS, dialLocal = true, true
 	for range make([]byte, 5) { // do several times to test http2 connection reuse
-		for _, httpProxyVer := range testHttpProxyVersions {
+		for _, httpProxyVer := range testHTTPProxyVersions {
 			for _, resource := range testResources {
 				response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyAuthedUpstreamEnter.addr, httpProxyVer,
-					credentialsUpstreamCorrect, useTls)
+					credentialsUpstreamCorrect, useTLS, dialLocal)
 				if err != nil {
 					t.Fatal(err)
 				} else if err = responseExpected(response, caddyHTTPTestTarget.contents[resource]); err != nil {
@@ -403,11 +408,7 @@ func TestGETViaUpstream(t *testing.T) {
 
 func TestUpstreamPassthrough(t *testing.T) {
 	// Usptreaming proxy still hosts things as expected
-	tr := &http.Transport{
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-		ResponseHeaderTimeout: 2 * time.Second,
-	}
-	client := &http.Client{Transport: tr, Timeout: 2 * time.Second}
+	client := &http.Client{Transport: testTransport, Timeout: 2 * time.Second}
 	resp, err := client.Get("https://" + caddyAuthedUpstreamEnter.addr)
 	if err != nil {
 		t.Fatal(err)

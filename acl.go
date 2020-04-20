@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+type ACLRule struct {
+	Subjects []string `json:"subjects,omitempty"`
+	Allow    bool     `json:"allow,omitempty"`
+}
+
 type aclDecision uint8
 
 const (
@@ -65,7 +70,7 @@ func (a *aclAllRule) tryMatch(ip net.IP, domain string) aclDecision {
 	return aclDecisionDeny
 }
 
-func newAclRule(ruleSubject string, allow bool) (aclRule, error) {
+func newACLRule(ruleSubject string, allow bool) (aclRule, error) {
 	if ruleSubject == "all" {
 		return &aclAllRule{allow: allow}, nil
 	}
@@ -93,4 +98,26 @@ func newAclRule(ruleSubject string, allow bool) (aclRule, error) {
 		return nil, errors.New(ruleSubject + " could not be parsed as either IP, IP network, or domain: " + err.Error())
 	}
 	return &aclDomainRule{domain: ruleSubject, subdomainsAllowed: subdomainsAllowed, allow: allow}, nil
+}
+
+// isValidDomainLite shamelessly rejects non-LDH names. returns nil if domains seems valid
+func isValidDomainLite(domain string) error {
+	for i := 0; i < len(domain); i++ {
+		c := domain[i]
+		if 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || c == '_' || '0' <= c && c <= '9' ||
+			c == '-' || c == '.' {
+			continue
+		}
+		return errors.New("character " + string(c) + " is not allowed")
+	}
+	sections := strings.Split(domain, ".")
+	for _, s := range sections {
+		if len(s) == 0 {
+			return errors.New("empty section between dots in domain name or trailing dot")
+		}
+		if len(s) > 63 {
+			return errors.New("domain name section is too long")
+		}
+	}
+	return nil
 }

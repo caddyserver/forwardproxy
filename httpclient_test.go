@@ -3,6 +3,7 @@ package forwardproxy
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net"
 	"sync"
 	"testing"
@@ -12,27 +13,36 @@ import (
 )
 
 func TestHttpClient(t *testing.T) {
-	_test := func(proxyUrl string) {
-		for _, httpProxyVer := range testHttpProxyVersions {
-			for _, httpTargetVer := range testHttpTargetVersions {
+	const dialLocal = false
+	_test := func(urlSchemeAndCreds, urlAddress string) {
+		for _, httpProxyVer := range testHTTPProxyVersions {
+			for _, httpTargetVer := range testHTTPTargetVersions {
 				for _, resource := range testResources {
-					dialer, err := httpclient.NewHTTPConnectDialer(proxyUrl)
+					// always dial localhost for testing purposes
+					proxyURL := fmt.Sprintf("%s@%s", urlSchemeAndCreds, localDialAddr(urlAddress))
+
+					dialer, err := httpclient.NewHTTPConnectDialer(proxyURL)
 					if err != nil {
 						t.Fatal(err)
 					}
 					dialer.DialTLS = func(network string, address string) (net.Conn, string, error) {
-						conn, err := tls.Dial(network, address, &tls.Config{InsecureSkipVerify: true,
-							NextProtos: []string{httpVersionToAlpn[httpProxyVer]}})
+						// always dial localhost for testing purposes
+						conn, err := tls.Dial(network, localDialAddr(address), &tls.Config{
+							InsecureSkipVerify: true,
+							NextProtos:         []string{httpVersionToALPN[httpProxyVer]},
+						})
 						if err != nil {
 							return nil, "", err
 						}
 						return conn, conn.ConnectionState().NegotiatedProtocol, nil
 					}
-					conn, err := dialer.Dial("tcp", caddyTestTarget.addr)
+
+					// always dial localhost for testing purposes
+					conn, err := dialer.Dial("tcp", localDialAddr(caddyTestTarget.addr))
 					if err != nil {
 						t.Fatal(err)
 					}
-					response, err := getResourceViaProxyConn(conn, caddyTestTarget.addr, resource, httpTargetVer, credentialsCorrect)
+					response, err := getResourceViaProxyConn(conn, caddyTestTarget.addr, resource, httpTargetVer, credentialsCorrect, dialLocal)
 					if err != nil {
 						t.Fatal(httpProxyVer, httpTargetVer, err)
 					} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
@@ -43,8 +53,8 @@ func TestHttpClient(t *testing.T) {
 		}
 	}
 
-	_test("https://" + credentialsCorrectPlain + "@" + caddyForwardProxyAuth.addr)
-	_test("http://" + credentialsCorrectPlain + "@" + caddyHTTPForwardProxyAuth.addr)
+	_test("https://"+credentialsCorrectPlain, caddyForwardProxyAuth.addr)
+	_test("http://"+credentialsCorrectPlain, caddyHTTPForwardProxyAuth.addr)
 }
 
 func TestHttpClientH2Multiplexing(t *testing.T) {
@@ -52,14 +62,18 @@ func TestHttpClientH2Multiplexing(t *testing.T) {
 	// but it was manually inspected in Wireshark when this code was committed
 	httpProxyVer := "HTTP/2.0"
 	httpTargetVer := "HTTP/1.1"
+	const dialLocal = false
 
 	dialer, err := httpclient.NewHTTPConnectDialer("https://" + credentialsCorrectPlain + "@" + caddyForwardProxyAuth.addr)
 	if err != nil {
 		t.Fatal(err)
 	}
 	dialer.DialTLS = func(network string, address string) (net.Conn, string, error) {
-		conn, err := tls.Dial(network, address, &tls.Config{InsecureSkipVerify: true,
-			NextProtos: []string{httpVersionToAlpn[httpProxyVer]}})
+		// always dial localhost for testing purposes
+		conn, err := tls.Dial(network, localDialAddr(address), &tls.Config{
+			InsecureSkipVerify: true,
+			NextProtos:         []string{httpVersionToALPN[httpProxyVer]},
+		})
 		if err != nil {
 			return nil, "", err
 		}
@@ -74,11 +88,12 @@ func TestHttpClientH2Multiplexing(t *testing.T) {
 	_test := func() {
 		defer wg.Done()
 		for _, resource := range testResources {
-			conn, err := dialer.Dial("tcp", caddyTestTarget.addr)
+			// always dial localhost for testing purposes
+			conn, err := dialer.Dial("tcp", localDialAddr(caddyTestTarget.addr))
 			if err != nil {
 				t.Fatal(err)
 			}
-			response, err := getResourceViaProxyConn(conn, caddyTestTarget.addr, resource, httpTargetVer, credentialsCorrect)
+			response, err := getResourceViaProxyConn(conn, caddyTestTarget.addr, resource, httpTargetVer, credentialsCorrect, dialLocal)
 			if err != nil {
 				t.Fatal(httpProxyVer, httpTargetVer, err)
 			} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
