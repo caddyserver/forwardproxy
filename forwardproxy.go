@@ -46,7 +46,7 @@ type Handler struct {
 	// port     string // port on which chain with forwardproxy is listening on
 	Hosts caddyhttp.MatchHost `json:"hosts,omitempty"`
 
-	ProbeResistance *ProbeResistance
+	ProbeResistance *ProbeResistance `json:"probe_resistance"`
 
 	DialTimeout caddy.Duration `json:"dial_timeout,omitempty"` // for initial tcp connection
 
