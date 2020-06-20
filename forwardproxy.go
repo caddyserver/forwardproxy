@@ -111,6 +111,7 @@ func dualStream(target net.Conn, clientReader io.ReadCloser, clientWriter io.Wri
 		buf := bufferPool.Get().([]byte)
 		buf = buf[0:cap(buf)]
 		_, _err := flushingIoCopy(w, r, buf)
+		bufferPool.Put(buf)
 		if closeWriter, ok := w.(interface {
 			CloseWrite() error
 		}); ok {
@@ -468,6 +469,7 @@ func forwardResponse(w http.ResponseWriter, response *http.Response) error {
 	buf := bufferPool.Get().([]byte)
 	buf = buf[0:cap(buf)]
 	_, err := io.CopyBuffer(w, response.Body, buf)
+	bufferPool.Put(buf)
 	return err
 }
 
