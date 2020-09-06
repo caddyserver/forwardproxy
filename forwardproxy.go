@@ -236,7 +236,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		return caddyhttp.Error(http.StatusProxyAuthRequired, authErr)
 	}
 
-	if r.ProtoMajor != 1 && r.ProtoMajor != 2 {
+	if r.ProtoMajor != 1 && r.ProtoMajor != 2 && r.ProtoMajor != 3 {
 		return caddyhttp.Error(http.StatusHTTPVersionNotSupported,
 			fmt.Errorf("unsupported HTTP major version: %d", r.ProtoMajor))
 	}
@@ -255,7 +255,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 
 	if r.Method == http.MethodConnect {
 
-		if r.ProtoMajor == 2 {
+		if r.ProtoMajor == 2 || r.ProtoMajor == 3 {
 			if len(r.URL.Scheme) > 0 || len(r.URL.Path) > 0 {
 				return caddyhttp.Error(http.StatusBadRequest,
 					fmt.Errorf("CONNECT request has :scheme and/or :path pseudo-header fields"))
@@ -282,6 +282,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		case 1: // http1: hijack the whole flow
 			return serveHijack(w, targetConn)
 		case 2: // http2: keep reading from "request" and writing into same response
+			fallthrough
+		case 3:
 			defer r.Body.Close()
 			wFlusher, ok := w.(http.Flusher)
 			if !ok {
