@@ -50,7 +50,7 @@ type Handler struct {
 	// port     string // port on which chain with forwardproxy is listening on
 	Hosts caddyhttp.MatchHost `json:"hosts,omitempty"`
 
-	ProbeResistance *ProbeResistance `json:"probe_resistance"`
+	ProbeResistance *ProbeResistance `json:"probe_resistance,omitempty"`
 
 	DialTimeout caddy.Duration `json:"dial_timeout,omitempty"` // for initial tcp connection
 
@@ -711,7 +711,7 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 		subdirective := d.Val()
 		args := d.RemainingArgs()
 		switch subdirective {
-		case "basicauth":
+		case "basic_auth":
 			if len(args) != 2 {
 				return d.ArgErr()
 			}
@@ -783,8 +783,6 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				h.PACPath = "/proxy.pac"
 			}
 			log.Printf("Proxy Auto-Config will be served at %s\n", h.PACPath)
-		case "response_timeout":
-			return d.Err("response_timeout not supported yet.")
 		case "dial_timeout":
 			if len(args) != 1 {
 				return d.ArgErr()
@@ -819,7 +817,7 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				case "allow":
 					ruleSubjects = args[:]
 					aclAllow = true
-				case "allowfile":
+				case "allow_file":
 					if len(args) != 1 {
 						return d.Err("allowfile accepts a single filename argument")
 					}
@@ -830,7 +828,7 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 					aclAllow = true
 				case "deny":
 					ruleSubjects = args[:]
-				case "denyfile":
+				case "deny_file":
 					if len(args) != 1 {
 						return d.Err("denyfile accepts a single filename argument")
 					}
