@@ -14,31 +14,36 @@ For a complete list of features and their usage, see Caddyfile syntax:
 
 ## Caddyfile Syntax (Server Configuration)
 
-The simplest way to enable the forward proxy without authentication just include the `forwardproxy` directive in your Caddyfile. However, this allows anyone to use your server as a proxy, which might not be desirable.
+The simplest way to enable the forward proxy without authentication just include the `forward_proxy` directive in your Caddyfile. However, this allows anyone to use your server as a proxy, which might not be desirable.
 
-Open a block for more control; here's an example of all properties in use (note that the syntax is subject to change):
+The `forward_proxy` directive has no default order and must be used within a `route` directive to explicitly specify its order of evaluation. In the Caddyfile the addresses must start with `:443` for the `forward_proxy` to work for proxy requests of all origins.
+
+Here's an example of all properties in use (note that the syntax is subject to change):
 
 ```
-forwardproxy {
-    basicauth user1 0NtCL2JPJBgPPMmlPcJ
-    basicauth user2 密码
+:443, example.com
+route {
+  forward_proxy {
+    basic_auth user1 0NtCL2JPJBgPPMmlPcJ
+    basic_auth user2 密码
     ports     80 443
     hide_ip
     hide_via
     probe_resistance secret-link-kWWL9Q.com # alternatively you can use a real domain, such as caddyserver.com
     serve_pac        /secret-proxy.pac
-    response_timeout 30
     dial_timeout     30
     upstream         https://user:password@extra-upstream-hop.com
     acl {
       allow     *.caddyserver.com
       deny      192.168.1.1/32 192.168.0.0/16 *.prohibitedsite.com *.localhost
       allow     ::1/128 8.8.8.8 github.com *.github.io
-      allowfile /path/to/whitelist.txt
-      denyfile  /path/to/blacklist.txt
+      allow_file /path/to/whitelist.txt
+      deny_file  /path/to/blacklist.txt
       allow     all
       deny      all # unreachable rule, remaining requests are matched by `allow all` above
     }
+  }
+  file_server
 }
 ```
 
@@ -46,16 +51,16 @@ forwardproxy {
 
 ##### Security
 
-- **basicauth [user] [password]**  
-Sets basic HTTP auth credentials. This property may be repeated multiple times. Note that this is different from Caddy's built-in `basicauth` directive. BE SURE TO CHECK THE NAME OF THE SITE THAT IS REQUESTING CREDENTIALS BEFORE YOU ENTER THEM.  
+- **basic_auth [user] [password]**  
+Sets basic HTTP auth credentials. This property may be repeated multiple times. Note that this is different from Caddy's built-in `basic_auth` directive. BE SURE TO CHECK THE NAME OF THE SITE THAT IS REQUESTING CREDENTIALS BEFORE YOU ENTER THEM.  
 _Default: no authentication required._
 
 - **probe_resistance [secretlink.tld]**  
 Attempts to hide the fact that the site is a forward proxy.
 Proxy will no longer respond with "407 Proxy Authentication Required" if credentials are incorrect or absent,
 and will attempt to mimic a generic Caddy web server as if the forward proxy is not enabled.  
-Probing resistance works (and makes sense) only if basicauth is set up.
-To use your proxy with probe resistance, supply your basicauth credentials to your client configuration.
+Probing resistance works (and makes sense) only if `basic_auth` is set up.
+To use your proxy with probe resistance, supply your `basic_auth` credentials to your client configuration.
 If your proxy client(browser, operating system, browser extension, etc)
 allows you to preconfigure credentials, and sends credentials preemptively, you do not need secret link.  
 If your proxy client does not preemptively send credentials, you will have to visit your secret link in your browser to trigger the authentication.
@@ -91,9 +96,9 @@ The hostname in each forwardproxy request will be resolved to an IP address,
 and caddy will check the IP address and hostname against the directives in order until a directive matches the request.
 acl_directive may be:
   - **allow [ip or subnet or hostname] [ip or subnet or hostname]...**
-  - **allowfile /path/to/whitelist.txt**
+  - **allow_file /path/to/whitelist.txt**
   - **deny [ip or subnet or hostname] [ip or subnet or hostname]...**
-  - **denyfile /path/to/blacklist.txt**
+  - **deny_file /path/to/blacklist.txt**
 
   If you don't want unmatched requests to be subject to the default policy, you could finish
   your acl rules with one of the following to specify action on unmatched requests:
@@ -105,7 +110,7 @@ acl_directive may be:
   Note that hostname rules, matched early in the chain, will override later IP rules,
   so it is advised to put IP rules first, unless domains are highly trusted and should override the
   IP rules. Also note that domain-based blacklists are easily circumventable by directly specifying the IP.  
-  For `allowfile`/`denyfile` directives, syntax is the same, and each entry must be separated by newline.  
+  For `allow_file`/`deny_file` directives, syntax is the same, and each entry must be separated by newline.  
   This policy applies to all requests except requests to the proxy's own domain and port.
   Whitelisting/blacklisting of ports on per-host/IP basis is not supported.  
 _Default policy:_  
@@ -116,10 +121,6 @@ acl {
 _Default deny rules intend to prohibit access to localhost and local networks and may be expanded in future._
 
 ##### Timeouts
-
-- **response_timeout [integer]**  
-Sets timeout (in seconds) to get full response for HTTP requests made by proxy on behalf of users (does not affect `CONNECT`-method requests).  
-_Default: no timeout._
 
 - **dial_timeout [integer]**  
 Sets timeout (in seconds) for establishing TCP connection to target website. Affects all requests.  
