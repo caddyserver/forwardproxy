@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -27,6 +26,7 @@ import (
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/caddyserver/forwardproxy/httpclient"
 	"golang.org/x/net/proxy"
+	"go.uber.org/zap"
 )
 
 func init() {
@@ -39,6 +39,8 @@ type ProbeResistance struct {
 }
 
 type Handler struct {
+	logger *zap.Logger
+
 	PACPath string `json:"pac_path,omitempty"`
 
 	HideIP  bool `json:"hide_ip,omitempty"`
@@ -84,6 +86,8 @@ func (Handler) CaddyModule() caddy.ModuleInfo {
 
 // Provision ensures that h is set up properly before use.
 func (h *Handler) Provision(ctx caddy.Context) error {
+	h.logger = ctx.Logger(h)
+
 	if h.DialTimeout <= 0 {
 		h.DialTimeout = caddy.Duration(30 * time.Second)
 	}
@@ -134,7 +138,7 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 			return fmt.Errorf("probe resistance requires authentication")
 		}
 		if len(h.ProbeResistance.Domain) > 0 {
-			log.Printf("Secret domain used to connect to proxy: %s\n", h.ProbeResistance.Domain)
+			h.logger.Info("Secret domain used to connect to proxy: " + h.ProbeResistance.Domain)
 		}
 	}
 
@@ -171,7 +175,7 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 			if isLocalhost(h.upstream.Hostname()) && h.upstream.Scheme == "https" {
 				// disabling verification helps with testing the package and setups
 				// either way, it's impossible to have a legit TLS certificate for "127.0.0.1" - TODO: not true anymore
-				log.Println("Localhost upstream detected, disabling verification of TLS certificate")
+				h.logger.Info("Localhost upstream detected, disabling verification of TLS certificate")
 				d.DialTLS = func(network string, address string) (net.Conn, string, error) {
 					conn, err := tls.Dial(network, address, &tls.Config{InsecureSkipVerify: true})
 					if err != nil {
@@ -761,7 +765,7 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			if len(args) == 1 {
 				lowercaseArg := strings.ToLower(args[0])
 				if lowercaseArg != args[0] {
-					log.Println("WARNING: secret domain appears to have uppercase letters in it, which are not visitable")
+					h.logger.Warn("Secret domain appears to have uppercase letters in it, which are not visitable")
 				}
 				h.ProbeResistance = &ProbeResistance{Domain: args[0]}
 			} else {
@@ -782,7 +786,7 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			} else {
 				h.PACPath = "/proxy.pac"
 			}
-			log.Printf("Proxy Auto-Config will be served at %s\n", h.PACPath)
+			h.logger.Info("Proxy Auto-Config will be served at " + h.PACPath)
 		case "dial_timeout":
 			if len(args) != 1 {
 				return d.ArgErr()
