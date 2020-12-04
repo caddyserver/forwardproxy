@@ -1,3 +1,19 @@
+// Copyright 2017 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// Caching is purposefully ignored.
+
 package forwardproxy
 
 import (
@@ -22,56 +38,61 @@ import (
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
-	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/caddyserver/forwardproxy/httpclient"
-	"golang.org/x/net/proxy"
 	"go.uber.org/zap"
+	"golang.org/x/net/proxy"
 )
 
 func init() {
 	caddy.RegisterModule(Handler{})
-	httpcaddyfile.RegisterHandlerDirective("forward_proxy", parseCaddyfile)
 }
 
-type ProbeResistance struct {
-	Domain string `json:"domain,omitempty"`
-}
-
+// Handler implements a forward proxy.
+//
+// EXPERIMENTAL: This handler is still experimental and subject to breaking changes.
 type Handler struct {
 	logger *zap.Logger
 
+	// Filename of the PAC file to serve.
 	PACPath string `json:"pac_path,omitempty"`
 
-	HideIP  bool `json:"hide_ip,omitempty"`
+	// If true, the Forwarded header will not be augmented with your IP address.
+	HideIP bool `json:"hide_ip,omitempty"`
+
+	// If true, the Via heaeder will not be added.
 	HideVia bool `json:"hide_via,omitempty"`
 
-	// // host and port of the proxy; i.e. when configuring a client,
-	// // you give it the host and port of the proxy to use
-	// hostname string // do not intercept requests to the hostname (except for hidden link)
-	// port     string // port on which chain with forwardproxy is listening on
+	// Host(s) (and ports) of the proxy. When you configure a client,
+	// you will give it the host (and port) of the proxy to use.
 	Hosts caddyhttp.MatchHost `json:"hosts,omitempty"`
 
+	// Optional probe resistance. (See documentation.)
 	ProbeResistance *ProbeResistance `json:"probe_resistance,omitempty"`
 
-	DialTimeout caddy.Duration `json:"dial_timeout,omitempty"` // for initial tcp connection
+	// How long to wait before timing out initial TCP connections.
+	DialTimeout caddy.Duration `json:"dial_timeout,omitempty"`
+
+	// Optionally configure an upstream proxy to use.
+	Upstream string `json:"upstream,omitempty"`
+
+	// Access control list.
+	ACL []ACLRule `json:"acl,omitempty"`
+
+	// Ports to be allowed to connect to (if non-empty).
+	AllowedPorts []int `json:"allowed_ports,omitempty"`
 
 	httpTransport *http.Transport
 
-	Upstream string `json:"upstream,omitempty"`
-	// overridden dialContext allow to redirect requests to upstream proxy
+	// overridden dialContext allows us to redirect requests to upstream proxy
 	dialContext func(ctx context.Context, network, address string) (net.Conn, error)
 	upstream    *url.URL // address of upstream proxy
 
-	ACL              []ACLRule `json:"acl,omitempty"`
-	WhitelistedPorts []int     `json:"whitelisted_ports,omitempty"`
-
 	aclRules []aclRule
 
-	// TODO: temporary - we should try to reuse existing authentication modules instead!
-	BasicauthUser string `json:"auth_user,omitempty"`
-	BasicauthPass string `json:"auth_pass,omitempty"`
-
+	// TODO: temporary/deprecated - we should try to reuse existing authentication modules instead!
+	BasicauthUser   string `json:"auth_user_deprecated,omitempty"`
+	BasicauthPass   string `json:"auth_pass_deprecated,omitempty"`
 	authRequired    bool
 	authCredentials [][]byte // slice with base64-encoded credentials
 }
@@ -496,11 +517,11 @@ func (h Handler) portIsAllowed(port string) bool {
 	if portInt <= 0 || portInt > 65535 {
 		return false
 	}
-	if len(h.WhitelistedPorts) == 0 {
+	if len(h.AllowedPorts) == 0 {
 		return true
 	}
 	isAllowed := false
-	for _, p := range h.WhitelistedPorts {
+	for _, p := range h.AllowedPorts {
 		if p == portInt {
 			isAllowed = true
 			break
@@ -509,7 +530,6 @@ func (h Handler) portIsAllowed(port string) bool {
 	return isAllowed
 }
 
-// TODO:...
 func serveHiddenPage(w http.ResponseWriter, authErr error) error {
 	const hiddenPage = `<html>
 <head>
@@ -703,155 +723,9 @@ type dialContexter interface {
 	DialContext(ctx context.Context, network, address string) (net.Conn, error)
 }
 
-func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
-	if !d.Next() {
-		return d.ArgErr()
-	}
-	args := d.RemainingArgs()
-	if len(args) > 0 {
-		return d.ArgErr()
-	}
-	for nesting := d.Nesting(); d.NextBlock(nesting); {
-		subdirective := d.Val()
-		args := d.RemainingArgs()
-		switch subdirective {
-		case "basic_auth":
-			if len(args) != 2 {
-				return d.ArgErr()
-			}
-			if len(args[0]) == 0 {
-				return d.Err("empty usernames are not allowed")
-			}
-			// TODO: Evaluate policy of allowing empty passwords.
-			if strings.Contains(args[0], ":") {
-				return d.Err("character ':' in usernames is not allowed")
-			}
-			// TODO: Support multiple basicauths.
-			if h.BasicauthUser != "" || h.BasicauthPass != "" {
-				return d.Err("Multi-user basicauth is not supported")
-			}
-			h.BasicauthUser = args[0]
-			h.BasicauthPass = args[1]
-		case "ports":
-			if len(args) == 0 {
-				return d.ArgErr()
-			}
-			if len(h.WhitelistedPorts) != 0 {
-				return d.Err("ports subdirective specified twice")
-			}
-			h.WhitelistedPorts = make([]int, len(args))
-			for i, p := range args {
-				intPort, err := strconv.Atoi(p)
-				if intPort <= 0 || intPort > 65535 || err != nil {
-					return d.Err("ports are expected to be space-separated" +
-						" and in 0-65535 range. Got: " + p)
-				}
-				h.WhitelistedPorts[i] = intPort
-			}
-		case "hide_ip":
-			if len(args) != 0 {
-				return d.ArgErr()
-			}
-			h.HideIP = true
-		case "hide_via":
-			if len(args) != 0 {
-				return d.ArgErr()
-			}
-			h.HideVia = true
-		case "probe_resistance":
-			if len(args) > 1 {
-				return d.ArgErr()
-			}
-			if len(args) == 1 {
-				lowercaseArg := strings.ToLower(args[0])
-				if lowercaseArg != args[0] {
-					h.logger.Warn("Secret domain appears to have uppercase letters in it, which are not visitable")
-				}
-				h.ProbeResistance = &ProbeResistance{Domain: args[0]}
-			} else {
-				h.ProbeResistance = &ProbeResistance{}
-			}
-		case "serve_pac":
-			if len(args) > 1 {
-				return d.ArgErr()
-			}
-			if len(h.PACPath) != 0 {
-				return d.Err("serve_pac subdirective specified twice")
-			}
-			if len(args) == 1 {
-				h.PACPath = args[0]
-				if !strings.HasPrefix(h.PACPath, "/") {
-					h.PACPath = "/" + h.PACPath
-				}
-			} else {
-				h.PACPath = "/proxy.pac"
-			}
-			h.logger.Info("Proxy Auto-Config will be served at " + h.PACPath)
-		case "dial_timeout":
-			if len(args) != 1 {
-				return d.ArgErr()
-			}
-			timeout, err := caddy.ParseDuration(args[0])
-			if err != nil {
-				return d.ArgErr()
-			}
-			if timeout < 0 {
-				return d.Err("dial_timeout cannot be negative.")
-			}
-			h.DialTimeout = caddy.Duration(timeout)
-		case "upstream":
-			if len(args) != 1 {
-				return d.ArgErr()
-			}
-			if h.Upstream != "" {
-				return d.Err("upstream directive specified more than once")
-			}
-			h.Upstream = args[0]
-		case "acl":
-			for nesting := d.Nesting(); d.NextBlock(nesting); {
-				aclDirective := d.Val()
-				args := d.RemainingArgs()
-				if len(args) == 0 {
-					return d.ArgErr()
-				}
-				var ruleSubjects []string
-				var err error
-				aclAllow := false
-				switch aclDirective {
-				case "allow":
-					ruleSubjects = args[:]
-					aclAllow = true
-				case "allow_file":
-					if len(args) != 1 {
-						return d.Err("allowfile accepts a single filename argument")
-					}
-					ruleSubjects, err = readLinesFromFile(args[0])
-					if err != nil {
-						return err
-					}
-					aclAllow = true
-				case "deny":
-					ruleSubjects = args[:]
-				case "deny_file":
-					if len(args) != 1 {
-						return d.Err("denyfile accepts a single filename argument")
-					}
-					ruleSubjects, err = readLinesFromFile(args[0])
-					if err != nil {
-						return err
-					}
-				default:
-					return d.Err("expected acl directive: allow/allowfile/deny/denyfile." +
-						"got: " + aclDirective)
-				}
-				ar := ACLRule{Subjects: ruleSubjects, Allow: aclAllow}
-				h.ACL = append(h.ACL, ar)
-			}
-		default:
-			return d.ArgErr()
-		}
-	}
-	return nil
+// ProbeResistance configures probe resistance.
+type ProbeResistance struct {
+	Domain string `json:"domain,omitempty"`
 }
 
 func readLinesFromFile(filename string) ([]string, error) {
@@ -868,12 +742,6 @@ func readLinesFromFile(filename string) ([]string, error) {
 	}
 
 	return hostnames, scanner.Err()
-}
-
-func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
-	var fp Handler
-	err := fp.UnmarshalCaddyfile(h.Dispenser)
-	return &fp, err
 }
 
 // Interface guards

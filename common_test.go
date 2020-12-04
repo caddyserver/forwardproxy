@@ -265,7 +265,7 @@ func TestMain(m *testing.M) {
 				{Subjects: []string{"127.0.0.1"}, Allow: true},
 				{Subjects: []string{"all"}, Allow: false},
 			},
-			WhitelistedPorts: []int{6451},
+			AllowedPorts: []int{6451},
 		},
 	}
 
@@ -291,6 +291,7 @@ func TestMain(m *testing.M) {
 
 	// done configuring all the servers; now build the HTTP app
 	httpApp := caddyhttp.App{
+		HTTPPort: 1080, // use a high port to avoid permission issues
 		Servers: map[string]*caddyhttp.Server{
 			"caddyForwardProxy":                    caddyForwardProxy.server(),
 			"caddyForwardProxyAuth":                caddyForwardProxyAuth.server(),

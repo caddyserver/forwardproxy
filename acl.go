@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+// ACLRule describes an ACL rule.
 type ACLRule struct {
 	Subjects []string `json:"subjects,omitempty"`
 	Allow    bool     `json:"allow,omitempty"`
