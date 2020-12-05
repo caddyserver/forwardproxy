@@ -198,7 +198,8 @@ func TestConnectAuthWrongProbeResist(t *testing.T) {
 						t.Fatal(err)
 					}
 					if err = responsesAreEqual(responseProbeResist, responseForwardProxy); err == nil {
-						t.Fatal("Responses from servers with and without probe resistance are expected to be the same:", err)
+						t.Fatalf("Responses from servers with and without forwardproxy are expected to be different.\nResponse from Caddy with ProbeResist: %v\nResponse from Caddy without ProbeResist: %v\n",
+							responseProbeResist, responseForwardProxy)
 					}
 				}
 			}
