@@ -197,8 +197,7 @@ func TestConnectAuthWrongProbeResist(t *testing.T) {
 					if err = responsesAreEqual(responseProbeResist, responseReference); err != nil {
 						t.Fatal(err)
 					}
-					// TODO: this test was originally err == nil in Caddy v1, but not sure that makes sense in caddy v2? (similar test above on L174 is unchanged)
-					if err = responsesAreEqual(responseProbeResist, responseForwardProxy); err != nil {
+					if err = responsesAreEqual(responseProbeResist, responseForwardProxy); err == nil {
 						t.Fatal("Responses from servers with and without probe resistance are expected to be the same:", err)
 					}
 				}
