@@ -177,7 +177,7 @@ func TestConnectAuthWrongProbeResist(t *testing.T) {
 					}
 					if err = responsesAreEqual(responseProbeResist, responseForwardProxy); err == nil {
 						t.Fatalf("Responses from servers with and without Probe Resistance are expected to be different."+
-							"\nResponse from Caddy with ProbeResist: %v\nResponse from Caddy without ProbeResist: %v\n",
+							"\nResponse from Caddy with ProbeResist:    %v\nResponse from Caddy without ProbeResist: %v\n",
 							responseProbeResist, responseForwardProxy)
 					}
 				}
@@ -205,7 +205,7 @@ func TestConnectAuthWrongProbeResist(t *testing.T) {
 					}
 					if err = responsesAreEqual(responseProbeResist, responseForwardProxy); err == nil {
 						t.Fatalf("Responses from servers with and without Probe Resistance are expected to be different."+
-							"\nResponse from Caddy with ProbeResist: %v\nResponse from Caddy without ProbeResist: %v\n",
+							"\nResponse from Caddy with ProbeResist:    %v\nResponse from Caddy without ProbeResist: %v\n",
 							responseProbeResist, responseForwardProxy)
 					}
 				}

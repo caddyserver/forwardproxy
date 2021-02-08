@@ -76,7 +76,7 @@ func connectAndGetViaProxy(targetHost, resource, proxyAddr, httpTargetVer, proxy
 	} else {
 		req.Host = targetHost
 	}
-	req.URL, err = url.Parse("https://" + req.Host)
+	req.URL, err = url.Parse("https://" + req.Host + "/") // TODO: appending "/" causes file server to NOT issue redirect...
 	if err != nil {
 		return nil, err
 	}
