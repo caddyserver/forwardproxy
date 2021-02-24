@@ -279,7 +279,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 	}
 
 	if r.Method == http.MethodConnect {
-
 		if r.ProtoMajor == 2 {
 			if len(r.URL.Scheme) > 0 || len(r.URL.Path) > 0 {
 				return caddyhttp.Error(http.StatusBadRequest,

@@ -1,6 +1,7 @@
 package forwardproxy
 
 import (
+	"log"
 	"strconv"
 	"strings"
 
@@ -45,11 +46,20 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				return d.Err("character ':' in usernames is not allowed")
 			}
 			// TODO: Support multiple basicauths.
+			// TODO: Actually, just try to use Caddy 2's existing basicauth module.
 			if h.BasicauthUser != "" || h.BasicauthPass != "" {
 				return d.Err("Multi-user basicauth is not supported")
 			}
 			h.BasicauthUser = args[0]
 			h.BasicauthPass = args[1]
+		case "hosts":
+			if len(args) == 0 {
+				return d.ArgErr()
+			}
+			if len(h.Hosts) != 0 {
+				return d.Err("hosts subdirective specified twice")
+			}
+			h.Hosts = caddyhttp.MatchHost(args)
 		case "ports":
 			if len(args) == 0 {
 				return d.ArgErr()
@@ -82,7 +92,7 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			if len(args) == 1 {
 				lowercaseArg := strings.ToLower(args[0])
 				if lowercaseArg != args[0] {
-					h.logger.Warn("Secret domain appears to have uppercase letters in it, which are not visitable")
+					log.Println("[WARNING] Secret domain appears to have uppercase letters in it, which are not visitable")
 				}
 				h.ProbeResistance = &ProbeResistance{Domain: args[0]}
 			} else {
@@ -103,7 +113,6 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			} else {
 				h.PACPath = "/proxy.pac"
 			}
-			h.logger.Info("Proxy Auto-Config will be served at " + h.PACPath)
 		case "dial_timeout":
 			if len(args) != 1 {
 				return d.ArgErr()

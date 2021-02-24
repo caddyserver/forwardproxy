@@ -321,7 +321,7 @@ func TestMain(m *testing.M) {
 		Automation: &caddytls.AutomationConfig{
 			Policies: []*caddytls.AutomationPolicy{
 				{
-					IssuerRaw: json.RawMessage(`{"module": "internal"}`),
+					IssuersRaw: []json.RawMessage{json.RawMessage(`{"module": "internal"}`)},
 				},
 			},
 		},
