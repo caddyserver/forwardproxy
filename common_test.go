@@ -476,11 +476,11 @@ var testTransport = &http.Transport{
 	ResponseHeaderTimeout: 2 * time.Second,
 	DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 		// always dial localhost for testing purposes
-		return new(net.Dialer).DialContext(ctx, network, localDialAddr(addr))
+		return new(net.Dialer).DialContext(ctx, network, addr)
 	},
 	DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 		// always dial localhost for testing purposes
-		conn, err := new(net.Dialer).DialContext(ctx, network, localDialAddr(addr))
+		conn, err := new(net.Dialer).DialContext(ctx, network, addr)
 		if err != nil {
 			return nil, err
 		}

@@ -18,7 +18,7 @@ func TestHttpClient(t *testing.T) {
 			for _, httpTargetVer := range testHTTPTargetVersions {
 				for _, resource := range testResources {
 					// always dial localhost for testing purposes
-					proxyURL := fmt.Sprintf("%s@%s", urlSchemeAndCreds, localDialAddr(urlAddress))
+					proxyURL := fmt.Sprintf("%s@%s", urlSchemeAndCreds, urlAddress)
 
 					dialer, err := httpclient.NewHTTPConnectDialer(proxyURL)
 					if err != nil {
@@ -26,7 +26,7 @@ func TestHttpClient(t *testing.T) {
 					}
 					dialer.DialTLS = func(network string, address string) (net.Conn, string, error) {
 						// always dial localhost for testing purposes
-						conn, err := tls.Dial(network, localDialAddr(address), &tls.Config{
+						conn, err := tls.Dial(network, address, &tls.Config{
 							InsecureSkipVerify: true,
 							NextProtos:         []string{httpVersionToALPN[httpProxyVer]},
 						})
@@ -37,7 +37,7 @@ func TestHttpClient(t *testing.T) {
 					}
 
 					// always dial localhost for testing purposes
-					conn, err := dialer.Dial("tcp", localDialAddr(caddyTestTarget.addr))
+					conn, err := dialer.Dial("tcp", caddyTestTarget.addr)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -68,7 +68,7 @@ func TestHttpClientH2Multiplexing(t *testing.T) {
 	}
 	dialer.DialTLS = func(network string, address string) (net.Conn, string, error) {
 		// always dial localhost for testing purposes
-		conn, err := tls.Dial(network, localDialAddr(address), &tls.Config{
+		conn, err := tls.Dial(network, address, &tls.Config{
 			InsecureSkipVerify: true,
 			NextProtos:         []string{httpVersionToALPN[httpProxyVer]},
 		})
@@ -87,7 +87,7 @@ func TestHttpClientH2Multiplexing(t *testing.T) {
 		defer wg.Done()
 		for _, resource := range testResources {
 			// always dial localhost for testing purposes
-			conn, err := dialer.Dial("tcp", localDialAddr(caddyTestTarget.addr))
+			conn, err := dialer.Dial("tcp", caddyTestTarget.addr)
 			if err != nil {
 				t.Fatal(err)
 			}

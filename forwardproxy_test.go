@@ -30,26 +30,15 @@ import (
 	"golang.org/x/net/http2"
 )
 
-// localDialAddr changes the host portion of addr to be loopback,
-// which is useful since we're just testing.
-func localDialAddr(addr string) string {
-	_, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		panic(err)
-	}
-	return net.JoinHostPort("127.0.0.1", port)
-}
-
 func dial(proxyAddr, httpProxyVer string, useTLS bool) (net.Conn, error) {
 	// always dial localhost for testing purposes
-	dialAddr := localDialAddr(proxyAddr)
 	if useTLS {
-		return tls.Dial("tcp", dialAddr, &tls.Config{
+		return tls.Dial("tcp", proxyAddr, &tls.Config{
 			InsecureSkipVerify: true,
 			NextProtos:         []string{httpVersionToALPN[httpProxyVer]},
 		})
 	}
-	return net.Dial("tcp", dialAddr)
+	return net.Dial("tcp", proxyAddr)
 }
 
 func getViaProxy(targetHost, resource, proxyAddr, httpProxyVer, proxyCredentials string, useTLS bool) (*http.Response, error) {
