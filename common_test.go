@@ -262,7 +262,7 @@ func TestMain(m *testing.M) {
 		tls:  true,
 		proxyHandler: &Handler{
 			ACL: []ACLRule{
-				{Subjects: []string{"127.0.0.1"}, Allow: true},
+				{Subjects: []string{"127.0.64.51"}, Allow: true},
 				{Subjects: []string{"all"}, Allow: false},
 			},
 			AllowedPorts: []int{6451},
