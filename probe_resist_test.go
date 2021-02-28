@@ -12,10 +12,10 @@ import (
 )
 
 func TestGETAuthCorrectProbeResist(t *testing.T) {
-	const useTLS, dialLocal = true, true
+	const useTLS = true
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
-			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyProbeResist.addr, httpProxyVer, credentialsCorrect, useTLS, dialLocal)
+			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyProbeResist.addr, httpProxyVer, credentialsCorrect, useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
@@ -26,21 +26,21 @@ func TestGETAuthCorrectProbeResist(t *testing.T) {
 }
 
 func TestGETAuthWrongProbeResist(t *testing.T) {
-	const useTLS, dialLocal = true, false
+	const useTLS = true
 	for _, wrongCreds := range credentialsWrong {
 		for _, httpProxyVer := range testHTTPProxyVersions {
 			for _, resource := range testResources {
-				responseProbeResist, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyProbeResist.addr, httpProxyVer, wrongCreds, useTLS, dialLocal)
+				responseProbeResist, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyProbeResist.addr, httpProxyVer, wrongCreds, useTLS)
 				if err != nil {
 					t.Fatal(err)
 				}
 				// get response from reference server without forwardproxy and compare them
-				responseReference, err := getViaProxy(caddyTestTarget.addr, resource, caddyDummyProbeResist.addr, httpProxyVer, wrongCreds, useTLS, dialLocal)
+				responseReference, err := getViaProxy(caddyTestTarget.addr, resource, caddyDummyProbeResist.addr, httpProxyVer, wrongCreds, useTLS)
 				if err != nil {
 					t.Fatal(err)
 				}
 				// as a sanity check, get 407 from simple authenticated forwardproxy
-				responseForwardProxy, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpProxyVer, wrongCreds, useTLS, dialLocal)
+				responseForwardProxy, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpProxyVer, wrongCreds, useTLS)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -58,17 +58,17 @@ func TestGETAuthWrongProbeResist(t *testing.T) {
 				}
 			}
 			for _, resource := range testResources {
-				responseProbeResist, err := getViaProxy(caddyForwardProxyProbeResist.addr, resource, caddyForwardProxyProbeResist.addr, httpProxyVer, wrongCreds, useTLS, dialLocal)
+				responseProbeResist, err := getViaProxy(caddyForwardProxyProbeResist.addr, resource, caddyForwardProxyProbeResist.addr, httpProxyVer, wrongCreds, useTLS)
 				if err != nil {
 					t.Fatal(err)
 				}
 				// get response from reference server without forwardproxy and compare them
-				responseReference, err := getViaProxy(caddyDummyProbeResist.addr, resource, caddyDummyProbeResist.addr, httpProxyVer, wrongCreds, useTLS, dialLocal)
+				responseReference, err := getViaProxy(caddyDummyProbeResist.addr, resource, caddyDummyProbeResist.addr, httpProxyVer, wrongCreds, useTLS)
 				if err != nil {
 					t.Fatal(err)
 				}
 				// as a sanity check, get 407 from simple authenticated forwardproxy
-				responseForwardProxy, err := getViaProxy(caddyForwardProxyAuth.addr, resource, caddyForwardProxyAuth.addr, httpProxyVer, wrongCreds, useTLS, dialLocal)
+				responseForwardProxy, err := getViaProxy(caddyForwardProxyAuth.addr, resource, caddyForwardProxyAuth.addr, httpProxyVer, wrongCreds, useTLS)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -91,14 +91,14 @@ func TestGETAuthWrongProbeResist(t *testing.T) {
 
 // test that responses on http redirect port are same
 func TestGETAuthWrongProbeResistRedir(t *testing.T) {
-	const useTLS, dialLocal = false, false
+	const useTLS = false
 	httpProxyVer := "HTTP/1.1"
 	for _, wrongCreds := range credentialsWrong {
 		// request test target
 		for _, resource := range testResources {
-			responseProbeResist, rPRerr := getViaProxy(caddyTestTarget.addr, resource, changePort(caddyForwardProxyProbeResist.addr, caddyForwardProxyProbeResist.httpRedirPort), httpProxyVer, wrongCreds, useTLS, dialLocal)
+			responseProbeResist, rPRerr := getViaProxy(caddyTestTarget.addr, resource, changePort(caddyForwardProxyProbeResist.addr, caddyForwardProxyProbeResist.httpRedirPort), httpProxyVer, wrongCreds, useTLS)
 			// get response from reference server without forwardproxy and compare them
-			responseReference, rRerr := getViaProxy(caddyTestTarget.addr, resource, changePort(caddyDummyProbeResist.addr, caddyDummyProbeResist.httpRedirPort), httpProxyVer, wrongCreds, useTLS, dialLocal)
+			responseReference, rRerr := getViaProxy(caddyTestTarget.addr, resource, changePort(caddyDummyProbeResist.addr, caddyDummyProbeResist.httpRedirPort), httpProxyVer, wrongCreds, useTLS)
 			if (rPRerr == nil && rRerr != nil) || (rPRerr != nil && rRerr == nil) {
 				t.Fatalf("Reference error: %s. Probe resist error: %s", rRerr, rPRerr)
 			}
@@ -112,12 +112,12 @@ func TestGETAuthWrongProbeResistRedir(t *testing.T) {
 		}
 		// request self
 		for _, resource := range testResources {
-			responseProbeResist, err := getViaProxy(caddyForwardProxyProbeResist.addr, resource, changePort(caddyForwardProxyProbeResist.addr, caddyForwardProxyProbeResist.httpRedirPort), httpProxyVer, wrongCreds, useTLS, dialLocal)
+			responseProbeResist, err := getViaProxy(caddyForwardProxyProbeResist.addr, resource, changePort(caddyForwardProxyProbeResist.addr, caddyForwardProxyProbeResist.httpRedirPort), httpProxyVer, wrongCreds, useTLS)
 			if err != nil {
 				t.Fatal(err)
 			}
 			// get response from reference server without forwardproxy and compare them
-			responseReference, err := getViaProxy(caddyDummyProbeResist.addr, resource, changePort(caddyDummyProbeResist.addr, caddyDummyProbeResist.httpRedirPort), httpProxyVer, wrongCreds, useTLS, dialLocal)
+			responseReference, err := getViaProxy(caddyDummyProbeResist.addr, resource, changePort(caddyDummyProbeResist.addr, caddyDummyProbeResist.httpRedirPort), httpProxyVer, wrongCreds, useTLS)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -133,11 +133,11 @@ func TestGETAuthWrongProbeResistRedir(t *testing.T) {
 }
 
 func TestConnectAuthCorrectProbeResist(t *testing.T) {
-	const useTLS, dialLocal = true, true
+	const useTLS = true
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, httpTargetVer := range testHTTPTargetVersions {
 			for _, resource := range testResources {
-				response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyProbeResist.addr, httpTargetVer, credentialsCorrect, httpProxyVer, useTLS, dialLocal)
+				response, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyProbeResist.addr, httpTargetVer, credentialsCorrect, httpProxyVer, useTLS)
 				if err != nil {
 					t.Fatal(err)
 				} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
@@ -149,22 +149,22 @@ func TestConnectAuthCorrectProbeResist(t *testing.T) {
 }
 
 func TestConnectAuthWrongProbeResist(t *testing.T) {
-	const useTLS, dialLocal = true, false
+	const useTLS = true
 	for _, wrongCreds := range credentialsWrong {
 		for _, httpProxyVer := range testHTTPProxyVersions {
 			for _, httpTargetVer := range testHTTPTargetVersions {
 				for _, resource := range testResources {
-					responseProbeResist, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyProbeResist.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS, dialLocal)
+					responseProbeResist, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyProbeResist.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS)
 					if err != nil {
 						t.Fatal(err)
 					}
 					// get response from reference server without forwardproxy and compare them
-					responseReference, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyDummyProbeResist.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS, dialLocal)
+					responseReference, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyDummyProbeResist.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS)
 					if err != nil {
 						t.Fatal(err)
 					}
 					// as a sanity check, get 407 from simple authenticated forwardproxy
-					responseForwardProxy, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS, dialLocal)
+					responseForwardProxy, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -186,17 +186,17 @@ func TestConnectAuthWrongProbeResist(t *testing.T) {
 					if httpTargetVer != httpProxyVer {
 						continue
 					}
-					responseProbeResist, err := connectAndGetViaProxy(caddyForwardProxyProbeResist.addr, resource, caddyForwardProxyProbeResist.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS, dialLocal)
+					responseProbeResist, err := connectAndGetViaProxy(caddyForwardProxyProbeResist.addr, resource, caddyForwardProxyProbeResist.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS)
 					if err != nil {
 						t.Fatal(err)
 					}
 					// get response from reference server without forwardproxy and compare them
-					responseReference, err := connectAndGetViaProxy(caddyDummyProbeResist.addr, resource, caddyDummyProbeResist.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS, dialLocal)
+					responseReference, err := connectAndGetViaProxy(caddyDummyProbeResist.addr, resource, caddyDummyProbeResist.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS)
 					if err != nil {
 						t.Fatal(err)
 					}
 					// as a sanity check, get 407 from simple authenticated forwardproxy
-					responseForwardProxy, err := connectAndGetViaProxy(caddyForwardProxyAuth.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS, dialLocal)
+					responseForwardProxy, err := connectAndGetViaProxy(caddyForwardProxyAuth.addr, resource, caddyForwardProxyAuth.addr, httpTargetVer, wrongCreds, httpProxyVer, useTLS)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -216,18 +216,18 @@ func TestConnectAuthWrongProbeResist(t *testing.T) {
 
 // test that responses on http redirect port are same
 func TestConnectAuthWrongProbeResistRedir(t *testing.T) {
-	const useTLS, dialLocal = false, false
+	const useTLS = false
 	httpProxyVer := "HTTP/1.1"
 	for _, wrongCreds := range credentialsWrong {
 		for _, httpTargetVer := range testHTTPTargetVersions {
 			// request test target
 			for _, resource := range testResources {
-				responseProbeResist, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, changePort(caddyForwardProxyProbeResist.addr, caddyForwardProxyProbeResist.httpRedirPort), httpTargetVer, wrongCreds, httpProxyVer, useTLS, dialLocal)
+				responseProbeResist, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, changePort(caddyForwardProxyProbeResist.addr, caddyForwardProxyProbeResist.httpRedirPort), httpTargetVer, wrongCreds, httpProxyVer, useTLS)
 				if err != nil {
 					t.Fatal(err)
 				}
 				// get response from reference server without forwardproxy and compare them
-				responseReference, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, changePort(caddyDummyProbeResist.addr, caddyDummyProbeResist.httpRedirPort), httpTargetVer, wrongCreds, httpProxyVer, useTLS, dialLocal)
+				responseReference, err := connectAndGetViaProxy(caddyTestTarget.addr, resource, changePort(caddyDummyProbeResist.addr, caddyDummyProbeResist.httpRedirPort), httpTargetVer, wrongCreds, httpProxyVer, useTLS)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -241,12 +241,12 @@ func TestConnectAuthWrongProbeResistRedir(t *testing.T) {
 			}
 			// request self
 			for _, resource := range testResources {
-				responseProbeResist, err := connectAndGetViaProxy(caddyForwardProxyProbeResist.addr, resource, changePort(caddyForwardProxyProbeResist.addr, caddyForwardProxyProbeResist.httpRedirPort), httpTargetVer, wrongCreds, httpProxyVer, useTLS, dialLocal)
+				responseProbeResist, err := connectAndGetViaProxy(caddyForwardProxyProbeResist.addr, resource, changePort(caddyForwardProxyProbeResist.addr, caddyForwardProxyProbeResist.httpRedirPort), httpTargetVer, wrongCreds, httpProxyVer, useTLS)
 				if err != nil {
 					t.Fatal(err)
 				}
 				// get response from reference server without forwardproxy and compare them
-				responseReference, err := connectAndGetViaProxy(caddyDummyProbeResist.addr, resource, changePort(caddyDummyProbeResist.addr, caddyDummyProbeResist.httpRedirPort), httpTargetVer, wrongCreds, httpProxyVer, useTLS, dialLocal)
+				responseReference, err := connectAndGetViaProxy(caddyDummyProbeResist.addr, resource, changePort(caddyDummyProbeResist.addr, caddyDummyProbeResist.httpRedirPort), httpTargetVer, wrongCreds, httpProxyVer, useTLS)
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -12,11 +12,11 @@ test blacklist refused with correct status
 */
 
 func TestWhitelistAllowing(t *testing.T) {
-	const useTLS, dialLocal = true, true
+	const useTLS = true
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyWhiteListing.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
@@ -27,11 +27,11 @@ func TestWhitelistAllowing(t *testing.T) {
 }
 
 func TestWhitelistBlocking(t *testing.T) {
-	const useTLS, dialLocal = true, false
+	const useTLS = true
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyWhiteListing.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if response.StatusCode != http.StatusForbidden {
@@ -43,7 +43,7 @@ func TestWhitelistBlocking(t *testing.T) {
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy("google.com:6451", resource, caddyForwardProxyWhiteListing.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if response.StatusCode != http.StatusForbidden {
@@ -54,11 +54,11 @@ func TestWhitelistBlocking(t *testing.T) {
 }
 
 func TestLocalhostDefaultForbidden(t *testing.T) {
-	const useTLS, dialLocal = true, false
+	const useTLS = true
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy("localhost:6451", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if response.StatusCode != http.StatusForbidden {
@@ -70,7 +70,7 @@ func TestLocalhostDefaultForbidden(t *testing.T) {
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy("127.0.0.1:808", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if response.StatusCode != http.StatusForbidden {
@@ -82,7 +82,7 @@ func TestLocalhostDefaultForbidden(t *testing.T) {
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy("[::1]:8080", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if response.StatusCode != http.StatusForbidden {
@@ -93,11 +93,11 @@ func TestLocalhostDefaultForbidden(t *testing.T) {
 }
 
 func TestLocalNetworksDefaultForbidden(t *testing.T) {
-	const useTLS, dialLocal = true, false
+	const useTLS = true
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy("10.0.0.0:80", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if response.StatusCode != http.StatusForbidden {
@@ -109,7 +109,7 @@ func TestLocalNetworksDefaultForbidden(t *testing.T) {
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy("127.222.34.1:443", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if response.StatusCode != http.StatusForbidden {
@@ -121,7 +121,7 @@ func TestLocalNetworksDefaultForbidden(t *testing.T) {
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy("172.16.0.1:8080", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if response.StatusCode != http.StatusForbidden {
@@ -133,7 +133,7 @@ func TestLocalNetworksDefaultForbidden(t *testing.T) {
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy("192.168.192.168:888", resource, caddyForwardProxyNoBlacklistOverride.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if response.StatusCode != http.StatusForbidden {
@@ -144,11 +144,11 @@ func TestLocalNetworksDefaultForbidden(t *testing.T) {
 }
 
 func TestBlacklistBlocking(t *testing.T) {
-	const useTLS, dialLocal = true, false
+	const useTLS = true
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy(blacklistedDomain, resource, caddyForwardProxyBlackListing.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if response.StatusCode != http.StatusForbidden {
@@ -160,7 +160,7 @@ func TestBlacklistBlocking(t *testing.T) {
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy(blacklistedIPv4, resource, caddyForwardProxyBlackListing.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if response.StatusCode != http.StatusForbidden {
@@ -172,7 +172,7 @@ func TestBlacklistBlocking(t *testing.T) {
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy("["+blacklistedIPv6+"]:80", resource, caddyForwardProxyBlackListing.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if response.StatusCode != http.StatusForbidden {
@@ -183,11 +183,11 @@ func TestBlacklistBlocking(t *testing.T) {
 }
 
 func TestBlacklistAllowing(t *testing.T) {
-	const useTLS, dialLocal = true, true
+	const useTLS = true
 	for _, httpProxyVer := range testHTTPProxyVersions {
 		for _, resource := range testResources {
 			response, err := getViaProxy(caddyTestTarget.addr, resource, caddyForwardProxyBlackListing.addr, httpProxyVer,
-				"", useTLS, dialLocal)
+				"", useTLS)
 			if err != nil {
 				t.Fatal(err)
 			} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {

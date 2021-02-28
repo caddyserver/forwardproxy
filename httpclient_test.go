@@ -13,7 +13,6 @@ import (
 )
 
 func TestHttpClient(t *testing.T) {
-	const dialLocal = false
 	_test := func(urlSchemeAndCreds, urlAddress string) {
 		for _, httpProxyVer := range testHTTPProxyVersions {
 			for _, httpTargetVer := range testHTTPTargetVersions {
@@ -42,7 +41,7 @@ func TestHttpClient(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					response, err := getResourceViaProxyConn(conn, caddyTestTarget.addr, resource, httpTargetVer, credentialsCorrect, dialLocal)
+					response, err := getResourceViaProxyConn(conn, caddyTestTarget.addr, resource, httpTargetVer, credentialsCorrect)
 					if err != nil {
 						t.Fatal(httpProxyVer, httpTargetVer, err)
 					} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
@@ -62,7 +61,6 @@ func TestHttpClientH2Multiplexing(t *testing.T) {
 	// but it was manually inspected in Wireshark when this code was committed
 	httpProxyVer := "HTTP/2.0"
 	httpTargetVer := "HTTP/1.1"
-	const dialLocal = false
 
 	dialer, err := httpclient.NewHTTPConnectDialer("https://" + credentialsCorrectPlain + "@" + caddyForwardProxyAuth.addr)
 	if err != nil {
@@ -93,7 +91,7 @@ func TestHttpClientH2Multiplexing(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			response, err := getResourceViaProxyConn(conn, caddyTestTarget.addr, resource, httpTargetVer, credentialsCorrect, dialLocal)
+			response, err := getResourceViaProxyConn(conn, caddyTestTarget.addr, resource, httpTargetVer, credentialsCorrect)
 			if err != nil {
 				t.Fatal(httpProxyVer, httpTargetVer, err)
 			} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
