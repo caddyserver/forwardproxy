@@ -98,22 +98,21 @@ func (c *caddyTestServer) server() *caddyhttp.Server {
 
 	// create the routes
 	var routes caddyhttp.RouteList
+	if c.tls {
+		// cheap hack for our tests to get TLS certs for the hostnames that
+		// it needs TLS certs for: create an empty route with a single host
+		// matcher for that hostname, and auto HTTPS will do the rest
+		hostMatcherJSON, err := json.Marshal(caddyhttp.MatchHost{host})
+		if err != nil {
+			panic(err)
+		}
+		matchersRaw := caddyhttp.RawMatcherSets{
+			caddy.ModuleMap{"host": hostMatcherJSON},
+		}
+		routes = append(routes, caddyhttp.Route{MatcherSetsRaw: matchersRaw})
+	}
 	if c.proxyHandler != nil {
 		if host != "" {
-			if c.tls {
-				// cheap hack for our tests to get TLS certs for the hostnames that
-				// it needs TLS certs for: create an empty route with a single host
-				// matcher for that hostname, and auto HTTPS will do the rest
-				hostMatcherJSON, err := json.Marshal(caddyhttp.MatchHost{host})
-				if err != nil {
-					panic(err)
-				}
-				matchersRaw := caddyhttp.RawMatcherSets{
-					caddy.ModuleMap{"host": hostMatcherJSON},
-				}
-				routes = append(routes, caddyhttp.Route{MatcherSetsRaw: matchersRaw})
-			}
-
 			// tell the proxy which hostname to serve the proxy on; this must
 			// be distinct from the host matcher, since the proxy basically
 			// does its own host matching
