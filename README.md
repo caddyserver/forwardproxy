@@ -20,8 +20,8 @@ Open a block for more control; here's an example of all properties in use (note 
 
 ```
 forwardproxy {
-    basicauth user1 0NtCL2JPJBgPPMmlPcJ
-    basicauth user2 密码
+    basicauth user1 password1
+    basicauth user2 password2
     ports     80 443
     hide_ip
     hide_via
