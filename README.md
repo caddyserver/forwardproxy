@@ -19,26 +19,29 @@ The simplest way to enable the forward proxy without authentication just include
 Open a block for more control; here's an example of all properties in use (note that the syntax is subject to change):
 
 ```
-forwardproxy {
-    basicauth user1 password1
-    basicauth user2 password2
-    ports     80 443
-    hide_ip
-    hide_via
-    probe_resistance secret-link-kWWL9Q.com # alternatively you can use a real domain, such as caddyserver.com
-    serve_pac        /secret-proxy.pac
-    response_timeout 30
-    dial_timeout     30
-    upstream         https://user:password@extra-upstream-hop.com
-    acl {
-      allow     *.caddyserver.com
-      deny      192.168.1.1/32 192.168.0.0/16 *.prohibitedsite.com *.localhost
-      allow     ::1/128 8.8.8.8 github.com *.github.io
-      allowfile /path/to/whitelist.txt
-      denyfile  /path/to/blacklist.txt
-      allow     all
-      deny      all # unreachable rule, remaining requests are matched by `allow all` above
-    }
+:80, :443 {
+      log / stdout "{remote} - {user} [{when}] \"{method} {uri} {proto}\" {status} {size} \"{>Referer}\" \"{>User-Agent}\" {hostonly} {request_id} {latency_ms}"
+      forwardproxy {
+          basicauth user1 password1
+          basicauth user2 password2
+          ports     80 443
+          hide_ip
+          hide_via
+          probe_resistance secret-link-kWWL9Q.com # alternatively you can use a real domain, such as caddyserver.com
+          serve_pac        /secret-proxy.pac
+          response_timeout 30
+          dial_timeout     30
+          upstream         https://user:password@extra-upstream-hop.com
+          acl {
+            allow     *.caddyserver.com
+            deny      192.168.1.1/32 192.168.0.0/16 *.prohibitedsite.com *.localhost
+            allow     ::1/128 8.8.8.8 github.com *.github.io
+            allowfile /path/to/whitelist.txt
+            denyfile  /path/to/blacklist.txt
+            allow     all
+            deny      all # unreachable rule, remaining requests are matched by `allow all` above
+          }
+      }
 }
 ```
 
