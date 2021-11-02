@@ -19,7 +19,7 @@ The simplest way to enable the forward proxy without authentication just include
 Open a block for more control; here's an example of all properties in use (note that the syntax is subject to change):
 
 ```
-:80, :443 {
+:2015 {
       log / stdout "{remote} - {user} [{when}] \"{method} {uri} {proto}\" {status} {size} \"{>Referer}\" \"{>User-Agent}\" {hostonly} {request_id} {latency_ms}"
       forwardproxy {
           basicauth user1 password1
