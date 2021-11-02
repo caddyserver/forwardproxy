@@ -5,6 +5,6 @@ RUN go build caddy.go
 
 FROM ubuntu:20.04
 COPY --from=builder /go/forwardproxy/cmd/caddy/caddy /usr/bin/caddy
-EXPOSE 80 443
+EXPOSE 2015
 ENTRYPOINT ["/usr/bin/caddy"] 
 CMD ["-conf", "/etc/caddy/Caddyfile", "--log", "/dev/stdout", "--agree=true"]
