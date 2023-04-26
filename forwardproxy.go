@@ -91,10 +91,10 @@ type Handler struct {
 	aclRules []aclRule
 
 	// TODO: temporary/deprecated - we should try to reuse existing authentication modules instead!
-	BasicauthUser   string `json:"auth_user_deprecated,omitempty"`
-	BasicauthPass   string `json:"auth_pass_deprecated,omitempty"`
-	authRequired    bool
-	authCredentials [][]byte // slice with base64-encoded credentials
+	BasicauthUser   string   `json:"auth_user_deprecated,omitempty"`
+	BasicauthPass   string   `json:"auth_pass_deprecated,omitempty"`
+	AuthRequired    bool     `json:"auth_required,omitempty"`
+	AuthCredentials [][]byte `json:"auth_credentials,omitempty"` // slice with base64-encoded credentials
 }
 
 // CaddyModule returns the Caddy module information.
@@ -118,14 +118,6 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 		MaxIdleConns:        50,
 		IdleConnTimeout:     60 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
-	}
-
-	// TODO: temporary, in an effort to get the tests to pass
-	if h.BasicauthUser != "" && h.BasicauthPass != "" {
-		basicAuthBuf := make([]byte, base64.StdEncoding.EncodedLen(len(h.BasicauthUser)+1+len(h.BasicauthPass)))
-		base64.StdEncoding.Encode(basicAuthBuf, []byte(h.BasicauthUser+":"+h.BasicauthPass))
-		h.authRequired = true
-		h.authCredentials = [][]byte{basicAuthBuf}
 	}
 
 	// access control lists
@@ -155,7 +147,7 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	h.aclRules = append(h.aclRules, &aclAllRule{allow: true})
 
 	if h.ProbeResistance != nil {
-		if !h.authRequired {
+		if !h.AuthRequired {
 			return fmt.Errorf("probe resistance requires authentication")
 		}
 		if len(h.ProbeResistance.Domain) > 0 {
@@ -237,7 +229,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 	}
 
 	var authErr error
-	if h.authRequired {
+	if h.AuthRequired {
 		authErr = h.checkCredentials(r)
 	}
 	if h.ProbeResistance != nil && len(h.ProbeResistance.Domain) > 0 && reqHost == h.ProbeResistance.Domain {
@@ -418,7 +410,7 @@ func (h Handler) checkCredentials(r *http.Request) error {
 	if strings.ToLower(pa[0]) != "basic" {
 		return errors.New("Auth type is not supported")
 	}
-	for _, creds := range h.authCredentials {
+	for _, creds := range h.AuthCredentials {
 		if subtle.ConstantTimeCompare(creds, []byte(pa[1])) == 1 {
 			// Please do not consider this to be timing-attack-safe code. Simple equality is almost
 			// mindlessly substituted with constant time algo and there ARE known issues with this code,

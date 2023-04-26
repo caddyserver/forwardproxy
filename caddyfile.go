@@ -1,6 +1,7 @@
 package forwardproxy
 
 import (
+	"encoding/base64"
 	"log"
 	"strconv"
 	"strings"
@@ -45,13 +46,14 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			if strings.Contains(args[0], ":") {
 				return d.Err("character ':' in usernames is not allowed")
 			}
-			// TODO: Support multiple basicauths.
-			// TODO: Actually, just try to use Caddy 2's existing basicauth module.
-			if h.BasicauthUser != "" || h.BasicauthPass != "" {
-				return d.Err("Multi-user basicauth is not supported")
+			if h.AuthCredentials == nil {
+				h.AuthCredentials = [][]byte{}
 			}
-			h.BasicauthUser = args[0]
-			h.BasicauthPass = args[1]
+			// base64-encode credentials
+			buf := make([]byte, base64.StdEncoding.EncodedLen(len(args[0])+1+len(args[1])))
+			base64.StdEncoding.Encode(buf, []byte(args[0]+":"+args[1]))
+			h.AuthCredentials = append(h.AuthCredentials, buf)
+			h.AuthRequired = true
 		case "hosts":
 			if len(args) == 0 {
 				return d.ArgErr()
