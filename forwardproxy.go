@@ -91,8 +91,6 @@ type Handler struct {
 	aclRules []aclRule
 
 	// TODO: temporary/deprecated - we should try to reuse existing authentication modules instead!
-	BasicauthUser   string   `json:"auth_user_deprecated,omitempty"`
-	BasicauthPass   string   `json:"auth_pass_deprecated,omitempty"`
 	AuthRequired    bool     `json:"auth_required,omitempty"`
 	AuthCredentials [][]byte `json:"auth_credentials,omitempty"` // slice with base64-encoded credentials
 }
