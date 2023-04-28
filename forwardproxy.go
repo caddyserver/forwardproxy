@@ -410,6 +410,11 @@ func (h Handler) checkCredentials(r *http.Request) error {
 	}
 	for _, creds := range h.AuthCredentials {
 		if subtle.ConstantTimeCompare(creds, []byte(pa[1])) == 1 {
+			repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
+			buf := make([]byte, base64.StdEncoding.DecodedLen(len(creds)))
+			_, _ = base64.StdEncoding.Decode(buf, creds) // should not err ever since we are decoding a known good input
+			cred := string(buf)
+			repl.Set("http.auth.user.id", cred[:strings.IndexByte(cred, ':')])
 			// Please do not consider this to be timing-attack-safe code. Simple equality is almost
 			// mindlessly substituted with constant time algo and there ARE known issues with this code,
 			// e.g. size of smallest credentials is guessable. TODO: protect from all the attacks! Hash?
