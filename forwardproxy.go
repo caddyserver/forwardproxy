@@ -590,7 +590,13 @@ func serveHijack(w http.ResponseWriter, targetConn net.Conn) error {
 	}
 	res.Header.Set("Server", "Caddy")
 
-	err = res.Write(clientConn)
+	buf := bufio.NewWriter(clientConn)
+	err = res.Write(buf)
+	if err != nil {
+		return caddyhttp.Error(http.StatusInternalServerError,
+			fmt.Errorf("failed to write response: %v", err))
+	}
+	err = buf.Flush()
 	if err != nil {
 		return caddyhttp.Error(http.StatusInternalServerError,
 			fmt.Errorf("failed to send response to client: %v", err))
