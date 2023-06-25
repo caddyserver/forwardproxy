@@ -26,7 +26,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -60,7 +59,7 @@ type Handler struct {
 	// If true, the Forwarded header will not be augmented with your IP address.
 	HideIP bool `json:"hide_ip,omitempty"`
 
-	// If true, the Via heaeder will not be added.
+	// If true, the Via header will not be added.
 	HideVia bool `json:"hide_via,omitempty"`
 
 	// Host(s) (and ports) of the proxy. When you configure a client,
@@ -355,13 +354,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 			// make sure request is idempotent and could be retried by saving the Body
 			// None of those methods are supposed to have body,
 			// but we still need to copy the r.Body, even if it's empty
-			rBodyBuf, err := ioutil.ReadAll(r.Body)
+			rBodyBuf, err := io.ReadAll(r.Body)
 			if err != nil {
 				return caddyhttp.Error(http.StatusBadRequest,
 					fmt.Errorf("failed to read request body: %v", err))
 			}
 			r.GetBody = func() (io.ReadCloser, error) {
-				return ioutil.NopCloser(bytes.NewReader(rBodyBuf)), nil
+				return io.NopCloser(bytes.NewReader(rBodyBuf)), nil
 			}
 			r.Body, _ = r.GetBody()
 		}
@@ -416,7 +415,7 @@ func (h Handler) checkCredentials(r *http.Request) error {
 		return errors.New("Proxy-Authorization is required! Expected format: <type> <credentials>")
 	}
 	if strings.ToLower(pa[0]) != "basic" {
-		return errors.New("Auth type is not supported")
+		return errors.New("auth type is not supported")
 	}
 	for _, creds := range h.authCredentials {
 		if subtle.ConstantTimeCompare(creds, []byte(pa[1])) == 1 {
@@ -426,7 +425,7 @@ func (h Handler) checkCredentials(r *http.Request) error {
 			return nil
 		}
 	}
-	return errors.New("Invalid credentials")
+	return errors.New("invalid credentials")
 }
 
 func (h Handler) shouldServePACFile(r *http.Request) bool {
@@ -582,7 +581,8 @@ func serveHijack(w http.ResponseWriter, targetConn net.Conn) error {
 	}
 	// Since we hijacked the connection, we lost the ability to write and flush headers via w.
 	// Let's handcraft the response and send it manually.
-	res := &http.Response{StatusCode: http.StatusOK,
+	res := &http.Response{
+		StatusCode: http.StatusOK,
 		Proto:      "HTTP/1.1",
 		ProtoMajor: 1,
 		ProtoMinor: 1,

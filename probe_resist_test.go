@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -44,6 +44,7 @@ func TestGETAuthWrongProbeResist(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				if responseProbeResist.StatusCode != responseReference.StatusCode {
 					t.Fatalf("Expected response: %d, Got: %d\n",
 						responseReference.StatusCode, responseProbeResist.StatusCode)
@@ -314,6 +315,7 @@ func responsesAreEqual(res1, res2 *http.Response) error {
 		if len(s1) != len(s2) {
 			return fmt.Sprintf("different length: %d vs %d", len(s1), len(s2))
 		}
+
 		for i := range s1 {
 			if s1[i] != s2[i] {
 				return fmt.Sprintf("different string at position %d: %s vs %s", i, s1[i], s2[i])
@@ -330,6 +332,7 @@ func responsesAreEqual(res1, res2 *http.Response) error {
 	if len(res1.Header) != len(res2.Header) {
 		return errors.New("Headers have different length")
 	}
+
 	for k1, v1 := range res1.Header {
 		k1Lower := strings.ToLower(k1)
 		if k1Lower == "date" {
@@ -352,8 +355,8 @@ func responsesAreEqual(res1, res2 *http.Response) error {
 		}
 	}
 	// Compare bodies
-	buf1, err1 := ioutil.ReadAll(res1.Body)
-	buf2, err2 := ioutil.ReadAll(res2.Body)
+	buf1, err1 := io.ReadAll(res1.Body)
+	buf2, err2 := io.ReadAll(res2.Body)
 	n1 := len(buf1)
 	n2 := len(buf2)
 	makeBodyError := func(s string) error {
