@@ -30,12 +30,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/caddyserver/caddy/v2"
+	caddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/caddyserver/forwardproxy/httpclient"
@@ -197,7 +198,7 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 				// either way, it's impossible to have a legit TLS certificate for "127.0.0.1" - TODO: not true anymore
 				h.logger.Info("Localhost upstream detected, disabling verification of TLS certificate")
 				d.DialTLS = func(network string, address string) (net.Conn, string, error) {
-					conn, err := tls.Dial(network, address, &tls.Config{InsecureSkipVerify: true})
+					conn, err := tls.Dial(network, address, &tls.Config{InsecureSkipVerify: true}) // #nosec G402
 					if err != nil {
 						return nil, "", err
 					}
@@ -393,7 +394,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 				fmt.Errorf("failed to read upstream response: %v", err))
 		}
 	}
-	r.Body.Close()
+	err = r.Body.Close()
 
 	if response != nil {
 		defer response.Body.Close()
@@ -547,10 +548,10 @@ func serveHiddenPage(w http.ResponseWriter, authErr error) error {
 	if authErr != nil {
 		w.Header().Set("Proxy-Authenticate", "Basic realm=\"Caddy Secure Web Proxy\"")
 		w.WriteHeader(http.StatusProxyAuthRequired)
-		w.Write([]byte(fmt.Sprintf(hiddenPage, AuthFail)))
+		_, _ = w.Write([]byte(fmt.Sprintf(hiddenPage, AuthFail)))
 		return authErr
 	}
-	w.Write([]byte(fmt.Sprintf(hiddenPage, AuthOk)))
+	_, _ = w.Write([]byte(fmt.Sprintf(hiddenPage, AuthOk)))
 	return nil
 }
 
@@ -576,7 +577,8 @@ func serveHijack(w http.ResponseWriter, targetConn net.Conn) error {
 			if err != nil {
 				return caddyhttp.Error(http.StatusBadGateway, err)
 			}
-			targetConn.Write(rbuf)
+			_, _ = targetConn.Write(rbuf)
+
 		}
 	}
 	// Since we hijacked the connection, we lost the ability to write and flush headers via w.
@@ -615,8 +617,9 @@ func dualStream(target net.Conn, clientReader io.ReadCloser, clientWriter io.Wri
 		buf = buf[0:cap(buf)]
 		_, _err := flushingIoCopy(w, r, buf)
 		bufferPool.Put(buf)
+
 		if cw, ok := w.(closeWriter); ok {
-			cw.CloseWrite()
+			_ = cw.CloseWrite()
 		}
 		return _err
 	}
@@ -736,7 +739,8 @@ type ProbeResistance struct {
 }
 
 func readLinesFromFile(filename string) ([]string, error) {
-	file, err := os.Open(filename)
+	cleanFilename := filepath.Clean(filename)
+	file, err := os.Open(cleanFilename)
 	if err != nil {
 		return nil, err
 	}

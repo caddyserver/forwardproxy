@@ -132,12 +132,12 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 
 		resp, err := h2clientConn.RoundTrip(req)
 		if err != nil {
-			rawConn.Close()
+			err = rawConn.Close()
 			return nil, err
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			rawConn.Close()
+			_ = rawConn.Close()
 			return nil, errors.New("Proxy responded with non 200 code: " + resp.Status)
 		}
 		return NewHttp2Conn(rawConn, pw, resp.Body), nil
@@ -150,18 +150,18 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 
 		err := req.Write(rawConn)
 		if err != nil {
-			rawConn.Close()
+			err = rawConn.Close()
 			return nil, err
 		}
 
 		resp, err := http.ReadResponse(bufio.NewReader(rawConn), req)
 		if err != nil {
-			rawConn.Close()
+			err = rawConn.Close()
 			return nil, err
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			rawConn.Close()
+			_ = rawConn.Close()
 			return nil, errors.New("Proxy responded with non 200 code: " + resp.Status)
 		}
 		return rawConn, nil
@@ -207,6 +207,7 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 			tlsConf := tls.Config{
 				NextProtos: []string{"h2", "http/1.1"},
 				ServerName: c.ProxyURL.Hostname(),
+				MinVersion: tls.VersionTLS12,
 			}
 			tlsConn, err := tls.Dial(network, c.ProxyURL.Host, &tlsConf)
 			if err != nil {
@@ -232,13 +233,13 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 		t := http2.Transport{}
 		h2clientConn, err := t.NewClientConn(rawConn)
 		if err != nil {
-			rawConn.Close()
+			err = rawConn.Close()
 			return nil, err
 		}
 
 		proxyConn, err := connectHttp2(rawConn, h2clientConn)
 		if err != nil {
-			rawConn.Close()
+			err = rawConn.Close()
 			return nil, err
 		}
 		if c.EnableH2ConnReuse {
@@ -249,7 +250,7 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 		}
 		return proxyConn, err
 	default:
-		rawConn.Close()
+		_ = rawConn.Close()
 		return nil, errors.New("negotiated unsupported application layer protocol: " +
 			negotiatedProtocol)
 	}
@@ -274,8 +275,13 @@ func (h *http2Conn) Write(p []byte) (n int, err error) {
 }
 
 func (h *http2Conn) Close() error {
-	h.in.Close()
-	return h.out.Close()
+	inErr := h.in.Close()
+	outErr := h.out.Close()
+
+	if inErr != nil {
+		return inErr
+	}
+	return outErr
 }
 
 func (h *http2Conn) CloseConn() error {
