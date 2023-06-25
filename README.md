@@ -221,9 +221,9 @@ Don't forget to add `http.forwardproxy` plugin.
 
 #### Build from source
 
-0. Install latest Golang 1.12 or above and set export GO111MODULE=on
+0. Install latest Golang 1.20 or above and set export GO111MODULE=on
 1. ```bash
-	 go install github.com/caddyserver/forwardproxy/cmd/caddy
+	 go install github.com/caddyserver/forwardproxy/cmd/caddy@latest
 	 ```   
 	 Built `caddy` binary will be stored in $GOPATH/bin.  
 
