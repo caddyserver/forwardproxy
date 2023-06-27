@@ -624,7 +624,7 @@ func dualStream(target net.Conn, clientReader io.ReadCloser, clientWriter io.Wri
 		}
 		return _err
 	}
-	go stream(target, clientReader)
+	go stream(target, clientReader) //nolint: errcheck
 	return stream(clientWriter, target)
 }
 

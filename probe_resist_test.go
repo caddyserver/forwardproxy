@@ -342,14 +342,6 @@ func responsesAreEqual(res1, res2 *http.Response) error {
 		if !ok {
 			return fmt.Errorf("header \"%s: %s\" is absent in res2", k1, v1)
 		}
-		// if k1Lower == "location" {
-		// 	for i, h := range v2 {
-		// 		v2[i] = removeAddressesStr(h)
-		// 	}
-		// 	for i, h := range v1 {
-		// 		v1[i] = removeAddressesStr(h)
-		// 	}
-		// }
 		if errStr = stringSlicesAreEqual(v1, v2); errStr != "" {
 			return fmt.Errorf("header \"%s\" is different: %s", k1, errStr)
 		}
@@ -387,10 +379,6 @@ func removeAddressesByte(b []byte) []byte {
 	b = bytes.ReplaceAll(b, []byte(caddyDummyProbeResist.addr),
 		bytes.Repeat([]byte{'#'}, len(caddyDummyProbeResist.addr)))
 	return b
-}
-
-func removeAddressesStr(s string) string {
-	return string(removeAddressesByte([]byte(s)))
 }
 
 func changePort(inputAddr, toPort string) string {
