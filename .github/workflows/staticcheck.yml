@@ -1,4 +1,4 @@
-name: Gosec Security Scan
+name: Staticcheck Scan
 
 on:
   push:
@@ -14,7 +14,7 @@ on:
       - "**.md"
 
 jobs:
-  gosec-scan:
+  staticcheck-scan:
     runs-on: ubuntu-latest
     env:
       GO111MODULE: on
@@ -27,7 +27,7 @@ jobs:
           go-version: 'stable'
           check-latest: true
           cache: false
-      - name: Install Gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
-      - name: Run Gosec
-        run: gosec ./...
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+      - name: Run staticcheck
+        run: staticcheck ./...

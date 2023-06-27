@@ -1,4 +1,4 @@
-name: Gosec Security Scan
+name: Gocritic Scan
 
 on:
   push:
@@ -14,7 +14,7 @@ on:
       - "**.md"
 
 jobs:
-  gosec-scan:
+  gocritic-scan:
     runs-on: ubuntu-latest
     env:
       GO111MODULE: on
@@ -27,7 +27,7 @@ jobs:
           go-version: 'stable'
           check-latest: true
           cache: false
-      - name: Install Gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
-      - name: Run Gosec
-        run: gosec ./...
+      - name: Install go-critic
+        run: go install -v github.com/go-critic/go-critic/cmd/gocritic@latest
+      - name: Run gocritic
+        run: gocritic check -checkTests=False ./...

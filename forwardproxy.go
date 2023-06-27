@@ -365,7 +365,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 			}
 			r.Body, _ = r.GetBody()
 		}
-		response, err = h.httpTransport.RoundTrip(r)
+		response, _ = h.httpTransport.RoundTrip(r)
 	} else {
 		// Upstream requests don't interact well with Transport: connections could always be
 		// reused, but Transport thinks they go to different Hosts, so it spawns tons of
@@ -613,10 +613,11 @@ func serveHijack(w http.ResponseWriter, targetConn net.Conn) error {
 func dualStream(target net.Conn, clientReader io.ReadCloser, clientWriter io.Writer) error {
 	stream := func(w io.Writer, r io.Reader) error {
 		// copy bytes from r to w
-		buf := bufferPool.Get().([]byte)
+		bufPtr := bufferPool.Get().(*[]byte)
+		buf := *bufPtr
 		buf = buf[0:cap(buf)]
 		_, _err := flushingIoCopy(w, r, buf)
-		bufferPool.Put(buf)
+		bufferPool.Put(bufPtr)
 
 		if cw, ok := w.(closeWriter); ok {
 			_ = cw.CloseWrite()
@@ -678,10 +679,11 @@ func forwardResponse(w http.ResponseWriter, response *http.Response) error {
 	}
 	removeHopByHop(w.Header())
 	w.WriteHeader(response.StatusCode)
-	buf := bufferPool.Get().([]byte)
+	bufPtr := bufferPool.Get().(*[]byte)
+	buf := *bufPtr
 	buf = buf[0:cap(buf)]
 	_, err := io.CopyBuffer(w, response.Body, buf)
-	bufferPool.Put(buf)
+	bufferPool.Put(bufPtr)
 	return err
 }
 
@@ -717,7 +719,8 @@ function FindProxyForURL(url, host) {
 
 var bufferPool = sync.Pool{
 	New: func() interface{} {
-		return make([]byte, 0, 32*1024)
+		buffer := make([]byte, 0, 32*1024)
+		return &buffer
 	},
 }
 

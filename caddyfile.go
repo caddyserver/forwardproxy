@@ -145,7 +145,7 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				aclAllow := false
 				switch aclDirective {
 				case "allow":
-					ruleSubjects = args[:]
+					ruleSubjects = args
 					aclAllow = true
 				case "allow_file":
 					if len(args) != 1 {
@@ -157,7 +157,7 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 					}
 					aclAllow = true
 				case "deny":
-					ruleSubjects = args[:]
+					ruleSubjects = args
 				case "deny_file":
 					if len(args) != 1 {
 						return d.Err("denyfile accepts a single filename argument")

@@ -382,10 +382,10 @@ func responsesAreEqual(res1, res2 *http.Response) error {
 // Responses from forwardproxy + proberesist and generic caddy can have different addresses present in headers.
 // To avoid false positives - remove addresses before comparing.
 func removeAddressesByte(b []byte) []byte {
-	b = bytes.Replace(b, []byte(caddyForwardProxyProbeResist.addr),
-		bytes.Repeat([]byte{'#'}, len(caddyForwardProxyProbeResist.addr)), -1)
-	b = bytes.Replace(b, []byte(caddyDummyProbeResist.addr),
-		bytes.Repeat([]byte{'#'}, len(caddyDummyProbeResist.addr)), -1)
+	b = bytes.ReplaceAll(b, []byte(caddyForwardProxyProbeResist.addr),
+		bytes.Repeat([]byte{'#'}, len(caddyForwardProxyProbeResist.addr)))
+	b = bytes.ReplaceAll(b, []byte(caddyDummyProbeResist.addr),
+		bytes.Repeat([]byte{'#'}, len(caddyDummyProbeResist.addr)))
 	return b
 }
 
