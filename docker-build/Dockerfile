@@ -1,4 +1,4 @@
-FROM alpine:3.6
+FROM alpine:3.18.2
 
 LABEL description="Docker image for caddy+forwardproxy plugin."
 LABEL maintainer="SergeyFrolov@colorado.edu"

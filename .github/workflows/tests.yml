@@ -1,0 +1,35 @@
+name: "Tests"
+
+on:
+  push:
+    branches:
+      - "master"
+      - "main"
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    branches:
+      - "*"
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  Tests:
+    strategy:
+      matrix:
+        go-version:
+          - stable
+        platform:
+          - ubuntu-latest
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Fetch Repository
+        uses: actions/checkout@v3
+      - name: Install Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '${{ matrix.go-version }}'
+      - name: Run test
+        run: go test -v ./...
+      - name: Run test -race
+        run: go test -v -race ./...

@@ -26,17 +26,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/caddyserver/caddy/v2"
+	caddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/caddyserver/forwardproxy/httpclient"
@@ -60,7 +60,7 @@ type Handler struct {
 	// If true, the Forwarded header will not be augmented with your IP address.
 	HideIP bool `json:"hide_ip,omitempty"`
 
-	// If true, the Via heaeder will not be added.
+	// If true, the Via header will not be added.
 	HideVia bool `json:"hide_via,omitempty"`
 
 	// Host(s) (and ports) of the proxy. When you configure a client,
@@ -188,7 +188,7 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 				// either way, it's impossible to have a legit TLS certificate for "127.0.0.1" - TODO: not true anymore
 				h.logger.Info("Localhost upstream detected, disabling verification of TLS certificate")
 				d.DialTLS = func(network string, address string) (net.Conn, string, error) {
-					conn, err := tls.Dial(network, address, &tls.Config{InsecureSkipVerify: true})
+					conn, err := tls.Dial(network, address, &tls.Config{InsecureSkipVerify: true}) // #nosec G402
 					if err != nil {
 						return nil, "", err
 					}
@@ -345,17 +345,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 			// make sure request is idempotent and could be retried by saving the Body
 			// None of those methods are supposed to have body,
 			// but we still need to copy the r.Body, even if it's empty
-			rBodyBuf, err := ioutil.ReadAll(r.Body)
+			rBodyBuf, err := io.ReadAll(r.Body)
 			if err != nil {
 				return caddyhttp.Error(http.StatusBadRequest,
 					fmt.Errorf("failed to read request body: %v", err))
 			}
 			r.GetBody = func() (io.ReadCloser, error) {
-				return ioutil.NopCloser(bytes.NewReader(rBodyBuf)), nil
+				return io.NopCloser(bytes.NewReader(rBodyBuf)), nil
 			}
 			r.Body, _ = r.GetBody()
 		}
-		response, err = h.httpTransport.RoundTrip(r)
+		response, _ = h.httpTransport.RoundTrip(r)
 	} else {
 		// Upstream requests don't interact well with Transport: connections could always be
 		// reused, but Transport thinks they go to different Hosts, so it spawns tons of
@@ -384,7 +384,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 				fmt.Errorf("failed to read upstream response: %v", err))
 		}
 	}
-	r.Body.Close()
+	err = r.Body.Close()
 
 	if response != nil {
 		defer response.Body.Close()
@@ -406,7 +406,7 @@ func (h Handler) checkCredentials(r *http.Request) error {
 		return errors.New("Proxy-Authorization is required! Expected format: <type> <credentials>")
 	}
 	if strings.ToLower(pa[0]) != "basic" {
-		return errors.New("Auth type is not supported")
+		return errors.New("auth type is not supported")
 	}
 	for _, creds := range h.AuthCredentials {
 		if subtle.ConstantTimeCompare(creds, []byte(pa[1])) == 1 {
@@ -421,7 +421,7 @@ func (h Handler) checkCredentials(r *http.Request) error {
 			return nil
 		}
 	}
-	return errors.New("Invalid credentials")
+	return errors.New("invalid credentials")
 }
 
 func (h Handler) shouldServePACFile(r *http.Request) bool {
@@ -543,10 +543,10 @@ func serveHiddenPage(w http.ResponseWriter, authErr error) error {
 	if authErr != nil {
 		w.Header().Set("Proxy-Authenticate", "Basic realm=\"Caddy Secure Web Proxy\"")
 		w.WriteHeader(http.StatusProxyAuthRequired)
-		w.Write([]byte(fmt.Sprintf(hiddenPage, AuthFail)))
+		_, _ = w.Write([]byte(fmt.Sprintf(hiddenPage, AuthFail)))
 		return authErr
 	}
-	w.Write([]byte(fmt.Sprintf(hiddenPage, AuthOk)))
+	_, _ = w.Write([]byte(fmt.Sprintf(hiddenPage, AuthOk)))
 	return nil
 }
 
@@ -572,12 +572,14 @@ func serveHijack(w http.ResponseWriter, targetConn net.Conn) error {
 			if err != nil {
 				return caddyhttp.Error(http.StatusBadGateway, err)
 			}
-			targetConn.Write(rbuf)
+			_, _ = targetConn.Write(rbuf)
+
 		}
 	}
 	// Since we hijacked the connection, we lost the ability to write and flush headers via w.
 	// Let's handcraft the response and send it manually.
-	res := &http.Response{StatusCode: http.StatusOK,
+	res := &http.Response{
+		StatusCode: http.StatusOK,
 		Proto:      "HTTP/1.1",
 		ProtoMajor: 1,
 		ProtoMinor: 1,
@@ -585,7 +587,13 @@ func serveHijack(w http.ResponseWriter, targetConn net.Conn) error {
 	}
 	res.Header.Set("Server", "Caddy")
 
-	err = res.Write(clientConn)
+	buf := bufio.NewWriter(clientConn)
+	err = res.Write(buf)
+	if err != nil {
+		return caddyhttp.Error(http.StatusInternalServerError,
+			fmt.Errorf("failed to write response: %v", err))
+	}
+	err = buf.Flush()
 	if err != nil {
 		return caddyhttp.Error(http.StatusInternalServerError,
 			fmt.Errorf("failed to send response to client: %v", err))
@@ -600,16 +608,18 @@ func serveHijack(w http.ResponseWriter, targetConn net.Conn) error {
 func dualStream(target net.Conn, clientReader io.ReadCloser, clientWriter io.Writer) error {
 	stream := func(w io.Writer, r io.Reader) error {
 		// copy bytes from r to w
-		buf := bufferPool.Get().([]byte)
+		bufPtr := bufferPool.Get().(*[]byte)
+		buf := *bufPtr
 		buf = buf[0:cap(buf)]
 		_, _err := flushingIoCopy(w, r, buf)
-		bufferPool.Put(buf)
+		bufferPool.Put(bufPtr)
+
 		if cw, ok := w.(closeWriter); ok {
-			cw.CloseWrite()
+			_ = cw.CloseWrite()
 		}
 		return _err
 	}
-	go stream(target, clientReader)
+	go stream(target, clientReader) //nolint: errcheck
 	return stream(clientWriter, target)
 }
 
@@ -664,10 +674,11 @@ func forwardResponse(w http.ResponseWriter, response *http.Response) error {
 	}
 	removeHopByHop(w.Header())
 	w.WriteHeader(response.StatusCode)
-	buf := bufferPool.Get().([]byte)
+	bufPtr := bufferPool.Get().(*[]byte)
+	buf := *bufPtr
 	buf = buf[0:cap(buf)]
 	_, err := io.CopyBuffer(w, response.Body, buf)
-	bufferPool.Put(buf)
+	bufferPool.Put(bufPtr)
 	return err
 }
 
@@ -703,7 +714,8 @@ function FindProxyForURL(url, host) {
 
 var bufferPool = sync.Pool{
 	New: func() interface{} {
-		return make([]byte, 0, 32*1024)
+		buffer := make([]byte, 0, 32*1024)
+		return &buffer
 	},
 }
 
@@ -725,7 +737,8 @@ type ProbeResistance struct {
 }
 
 func readLinesFromFile(filename string) ([]string, error) {
-	file, err := os.Open(filename)
+	cleanFilename := filepath.Clean(filename)
+	file, err := os.Open(cleanFilename)
 	if err != nil {
 		return nil, err
 	}

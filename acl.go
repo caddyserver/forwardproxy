@@ -37,7 +37,6 @@ func (a *aclIPRule) tryMatch(ip net.IP, domain string) aclDecision {
 		return aclDecisionAllow
 	}
 	return aclDecisionDeny
-
 }
 
 type aclDomainRule struct {
@@ -47,9 +46,8 @@ type aclDomainRule struct {
 }
 
 func (a *aclDomainRule) tryMatch(ip net.IP, domain string) aclDecision {
-	if strings.HasSuffix(domain, ".") {
-		domain = domain[:len(domain)-1]
-	}
+	domain = strings.TrimPrefix(domain, ".")
+
 	if domain == a.domain ||
 		a.subdomainsAllowed && strings.HasSuffix(domain, "."+a.domain) {
 		if a.allow {

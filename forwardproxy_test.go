@@ -19,7 +19,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -75,7 +74,7 @@ func connectAndGetViaProxy(targetHost, resource, proxyAddr, httpTargetVer, proxy
 		req.ProtoMajor = 2
 		req.ProtoMinor = 0
 		pr, pw := io.Pipe()
-		req.Body = ioutil.NopCloser(pr)
+		req.Body = io.NopCloser(pr)
 		t := http2.Transport{}
 		clientConn, err := t.NewClientConn(proxyConn)
 		if err != nil {
