@@ -35,6 +35,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	caddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
@@ -419,6 +420,18 @@ func (h Handler) checkCredentials(r *http.Request) error {
 			// mindlessly substituted with constant time algo and there ARE known issues with this code,
 			// e.g. size of smallest credentials is guessable. TODO: protect from all the attacks! Hash?
 			return nil
+		}
+	}
+	buf := make([]byte, base64.StdEncoding.DecodedLen(len([]byte(pa[1]))))
+	n, err := base64.StdEncoding.Decode(buf, []byte(pa[1]))
+	if err == nil && utf8.Valid(buf[:n]) {
+		cred := string(buf[:n])
+		i := strings.IndexByte(cred, ':')
+		repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
+		if i >= 0 {
+			repl.Set("http.auth.user.id", "invalid:"+cred[:i])
+		} else {
+			repl.Set("http.auth.user.id", "invalidformat:"+cred)
 		}
 	}
 	return errors.New("invalid credentials")
