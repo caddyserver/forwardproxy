@@ -422,17 +422,23 @@ func (h Handler) checkCredentials(r *http.Request) error {
 			return nil
 		}
 	}
+	repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 	buf := make([]byte, base64.StdEncoding.DecodedLen(len([]byte(pa[1]))))
 	n, err := base64.StdEncoding.Decode(buf, []byte(pa[1]))
-	if err == nil && utf8.Valid(buf[:n]) {
+	if err != nil {
+		repl.Set("http.auth.user.id", "invalidbase64:"+err.Error())
+		return err
+	}
+	if utf8.Valid(buf[:n]) {
 		cred := string(buf[:n])
 		i := strings.IndexByte(cred, ':')
-		repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 		if i >= 0 {
 			repl.Set("http.auth.user.id", "invalid:"+cred[:i])
 		} else {
 			repl.Set("http.auth.user.id", "invalidformat:"+cred)
 		}
+	} else {
+		repl.Set("http.auth.user.id", "invalid::")
 	}
 	return errors.New("invalid credentials")
 }
