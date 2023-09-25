@@ -364,6 +364,9 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
+	// wait server ready for tls dial
+	time.Sleep(500 * time.Millisecond)
+
 	retCode := m.Run()
 
 	caddy.Stop()
