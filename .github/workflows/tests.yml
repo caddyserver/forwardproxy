@@ -18,6 +18,7 @@ jobs:
     strategy:
       matrix:
         go-version:
+          - oldstable
           - stable
         platform:
           - ubuntu-latest
@@ -30,6 +31,4 @@ jobs:
         with:
           go-version: '${{ matrix.go-version }}'
       - name: Run test
-        run: go test -v ./...
-      - name: Run test -race
         run: go test -v -race ./...

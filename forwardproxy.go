@@ -356,7 +356,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 			}
 			r.Body, _ = r.GetBody()
 		}
-		response, _ = h.httpTransport.RoundTrip(r)
+		response, err = h.httpTransport.RoundTrip(r)
 	} else {
 		// Upstream requests don't interact well with Transport: connections could always be
 		// reused, but Transport thinks they go to different Hosts, so it spawns tons of
@@ -385,7 +385,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 				fmt.Errorf("failed to read upstream response: %v", err))
 		}
 	}
-	err = r.Body.Close()
+	if err := r.Body.Close(); err != nil {
+		return caddyhttp.Error(http.StatusBadGateway,
+			fmt.Errorf("failed to close response body: %v", err))
+	}
 
 	if response != nil {
 		defer response.Body.Close()

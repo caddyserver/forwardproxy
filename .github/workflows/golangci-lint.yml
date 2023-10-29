@@ -22,4 +22,4 @@ jobs:
       - name: Run golangci-lint
         uses: reviewdog/action-golangci-lint@v2
         with:
-          golangci_lint_flags: "--tests=false"
+          golangci_lint_flags: "--tests=false --timeout=5m"
