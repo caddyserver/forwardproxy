@@ -212,16 +212,13 @@ func TestMain(m *testing.M) {
 		},
 	}
 
-	upstreamBuf := make([]byte, base64.StdEncoding.EncodedLen(25))
-	base64.StdEncoding.Encode(upstreamBuf, []byte("upstreamtest:upstreampass"))
-
 	caddyHTTPForwardProxyAuth = caddyTestServer{
 		addr: "127.0.69.73:6973",
 		root: "./test/forwardproxy",
 		proxyHandler: &Handler{
 			PACPath:         defaultPACPath,
 			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
-			AuthCredentials: [][]byte{upstreamBuf},
+			AuthCredentials: [][]byte{buf},
 			AuthRequired:    true,
 		},
 	}
@@ -257,13 +254,16 @@ func TestMain(m *testing.M) {
 		root: "./test/index",
 	}
 
+	upstreamBuf := make([]byte, base64.StdEncoding.EncodedLen(25))
+	base64.StdEncoding.Encode(upstreamBuf, []byte("upstreamtest:upstreampass"))
+
 	caddyAuthedUpstreamEnter = caddyTestServer{
 		addr: "127.0.65.25:6585",
 		root: "./test/upstreamingproxy",
 		tls:  true,
 		proxyHandler: &Handler{
 			Upstream:        "https://test:pass@127.0.0.1:4891",
-			AuthCredentials: [][]byte{buf},
+			AuthCredentials: [][]byte{upstreamBuf},
 			AuthRequired:    true,
 		},
 	}
