@@ -212,13 +212,16 @@ func TestMain(m *testing.M) {
 		},
 	}
 
+	upstreamBuf := make([]byte, base64.StdEncoding.EncodedLen(9))
+	base64.StdEncoding.Encode(upstreamBuf, []byte("upstreamtest:upstreampass"))
+
 	caddyHTTPForwardProxyAuth = caddyTestServer{
 		addr: "127.0.69.73:6973",
 		root: "./test/forwardproxy",
 		proxyHandler: &Handler{
 			PACPath:         defaultPACPath,
 			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
-			AuthCredentials: [][]byte{buf},
+			AuthCredentials: [][]byte{upstreamBuf},
 			AuthRequired:    true,
 		},
 	}
