@@ -58,7 +58,6 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				h.AuthCredentials = [][]byte{}
 			}
 			h.AuthCredentials = append(h.AuthCredentials, EncodeAuthCredentials(args[0], args[1]))
-			h.AuthRequired = true
 		case "hosts":
 			if len(args) == 0 {
 				return d.ArgErr()
