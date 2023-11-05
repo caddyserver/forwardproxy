@@ -201,10 +201,9 @@ func TestMain(m *testing.M) {
 		root: "./test/forwardproxy",
 		tls:  true,
 		proxyHandler: &Handler{
-			PACPath:       defaultPACPath,
-			ACL:           []ACLRule{{Subjects: []string{"all"}, Allow: true}},
-			BasicauthUser: "test",
-			BasicauthPass: "pass",
+			PACPath:         defaultPACPath,
+			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
+			AuthCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
 		},
 	}
 
@@ -212,10 +211,9 @@ func TestMain(m *testing.M) {
 		addr: "127.0.69.73:6973",
 		root: "./test/forwardproxy",
 		proxyHandler: &Handler{
-			PACPath:       defaultPACPath,
-			ACL:           []ACLRule{{Subjects: []string{"all"}, Allow: true}},
-			BasicauthUser: "test",
-			BasicauthPass: "pass",
+			PACPath:         defaultPACPath,
+			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
+			AuthCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
 		},
 	}
 
@@ -227,8 +225,7 @@ func TestMain(m *testing.M) {
 			PACPath:         "/superhiddenfile.pac",
 			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
 			ProbeResistance: &ProbeResistance{Domain: "test.localhost"},
-			BasicauthUser:   "test",
-			BasicauthPass:   "pass",
+			AuthCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
 		},
 		httpRedirPort: "8880",
 	}
@@ -255,9 +252,8 @@ func TestMain(m *testing.M) {
 		root: "./test/upstreamingproxy",
 		tls:  true,
 		proxyHandler: &Handler{
-			Upstream:      "https://test:pass@127.0.0.1:4891",
-			BasicauthUser: "upstreamtest",
-			BasicauthPass: "upstreampass",
+			Upstream:        "https://test:pass@127.0.0.1:4891",
+			AuthCredentials: [][]byte{EncodeAuthCredentials("upstreamtest", "upstreampass")},
 		},
 	}
 
