@@ -3,7 +3,6 @@ package forwardproxy
 import (
 	"context"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -197,9 +196,6 @@ func TestMain(m *testing.M) {
 		},
 	}
 
-	buf := make([]byte, base64.StdEncoding.EncodedLen(9))
-	base64.StdEncoding.Encode(buf, []byte("test:pass"))
-
 	caddyForwardProxyAuth = caddyTestServer{
 		addr: "127.0.0.1:4891",
 		root: "./test/forwardproxy",
@@ -207,7 +203,7 @@ func TestMain(m *testing.M) {
 		proxyHandler: &Handler{
 			PACPath:         defaultPACPath,
 			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
-			AuthCredentials: [][]byte{buf},
+			AuthCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
 			AuthRequired:    true,
 		},
 	}
@@ -218,7 +214,7 @@ func TestMain(m *testing.M) {
 		proxyHandler: &Handler{
 			PACPath:         defaultPACPath,
 			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
-			AuthCredentials: [][]byte{buf},
+			AuthCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
 			AuthRequired:    true,
 		},
 	}
@@ -231,7 +227,7 @@ func TestMain(m *testing.M) {
 			PACPath:         "/superhiddenfile.pac",
 			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
 			ProbeResistance: &ProbeResistance{Domain: "test.localhost"},
-			AuthCredentials: [][]byte{buf},
+			AuthCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
 			AuthRequired:    true,
 		},
 		httpRedirPort: "8880",
@@ -254,16 +250,13 @@ func TestMain(m *testing.M) {
 		root: "./test/index",
 	}
 
-	upstreamBuf := make([]byte, base64.StdEncoding.EncodedLen(25))
-	base64.StdEncoding.Encode(upstreamBuf, []byte("upstreamtest:upstreampass"))
-
 	caddyAuthedUpstreamEnter = caddyTestServer{
 		addr: "127.0.65.25:6585",
 		root: "./test/upstreamingproxy",
 		tls:  true,
 		proxyHandler: &Handler{
 			Upstream:        "https://test:pass@127.0.0.1:4891",
-			AuthCredentials: [][]byte{upstreamBuf},
+			AuthCredentials: [][]byte{EncodeAuthCredentials("upstreamtest", "upstreampass")},
 			AuthRequired:    true,
 		},
 	}

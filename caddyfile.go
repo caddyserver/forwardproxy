@@ -22,6 +22,14 @@ func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 	return &fp, err
 }
 
+// EncodeAuthCredentials base64-encode credentials
+func EncodeAuthCredentials(user, pass string) (result []byte) {
+	raw := []byte(user + ":" + pass)
+	result = make([]byte, base64.StdEncoding.EncodedLen(len(raw)))
+	base64.StdEncoding.Encode(result, raw)
+	return
+}
+
 // UnmarshalCaddyfile unmarshals Caddyfile tokens into h.
 func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	if !d.Next() {
@@ -49,10 +57,7 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			if h.AuthCredentials == nil {
 				h.AuthCredentials = [][]byte{}
 			}
-			// base64-encode credentials
-			buf := make([]byte, base64.StdEncoding.EncodedLen(len(args[0])+1+len(args[1])))
-			base64.StdEncoding.Encode(buf, []byte(args[0]+":"+args[1]))
-			h.AuthCredentials = append(h.AuthCredentials, buf)
+			h.AuthCredentials = append(h.AuthCredentials, EncodeAuthCredentials(args[0], args[1]))
 			h.AuthRequired = true
 		case "hosts":
 			if len(args) == 0 {
