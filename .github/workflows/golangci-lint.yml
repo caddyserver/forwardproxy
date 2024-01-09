@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Run golangci-lint
         uses: reviewdog/action-golangci-lint@v2
         with:
