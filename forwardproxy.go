@@ -487,6 +487,18 @@ func (h Handler) dialContextCheckACL(ctx context.Context, network, hostPort stri
 			fmt.Errorf("port %s is not allowed", port))
 	}
 
+match:
+	for _, rule := range h.aclRules {
+		if _, ok := rule.(*aclDomainRule); ok {
+			switch rule.tryMatch(nil, host) {
+			case aclDecisionDeny:
+				return nil, caddyhttp.Error(http.StatusForbidden, fmt.Errorf("disallowed host %s", host))
+			case aclDecisionAllow:
+				break match
+			}
+		}
+	}
+
 	// in case IP was provided, net.LookupIP will simply return it
 	IPs, err := net.LookupIP(host)
 	if err != nil {
