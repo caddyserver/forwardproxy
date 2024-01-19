@@ -573,12 +573,7 @@ func serveHiddenPage(w http.ResponseWriter, authErr error) error {
 // Hijacks the connection from ResponseWriter, writes the response and proxies data between targetConn
 // and hijacked connection.
 func serveHijack(w http.ResponseWriter, targetConn net.Conn) error {
-	hijacker, ok := w.(http.Hijacker)
-	if !ok {
-		return caddyhttp.Error(http.StatusInternalServerError,
-			fmt.Errorf("ResponseWriter does not implement http.Hijacker"))
-	}
-	clientConn, bufReader, err := hijacker.Hijack()
+	clientConn, bufReader, err := http.NewResponseController(w).Hijack()
 	if err != nil {
 		return caddyhttp.Error(http.StatusInternalServerError,
 			fmt.Errorf("hijack failed: %v", err))
