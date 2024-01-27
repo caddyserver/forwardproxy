@@ -1,4 +1,4 @@
-name: Golangci Lint Check
+name: Golangci-Lint Check
 
 on:
   push:
