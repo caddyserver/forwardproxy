@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// httpclient is used by the upstreaming forwardproxy to establish connections to http(s) upstreams.
+// Package httpclient is used by the upstreaming forwardproxy to establish connections to http(s) upstreams.
 // it implements x/net/proxy.Dialer interface
 package httpclient
 
@@ -33,7 +33,7 @@ import (
 
 // HTTPConnectDialer allows to configure one-time use HTTP CONNECT client
 type HTTPConnectDialer struct {
-	ProxyUrl      url.URL
+	ProxyURL      url.URL
 	DefaultHeader http.Header
 
 	// TODO: If spkiFp is set, use it as SPKI fingerprint to confirm identity of the
@@ -52,47 +52,47 @@ type HTTPConnectDialer struct {
 	cachedH2RawConn    net.Conn
 }
 
-// NewHTTPClient creates a client to issue CONNECT requests and tunnel traffic via HTTPS proxy.
-// proxyUrlStr must provide Scheme and Host, may provide credentials and port.
+// NewHTTPConnectDialer creates a client to issue CONNECT requests and tunnel traffic via HTTPS proxy.
+// proxyURLStr must provide Scheme and Host, may provide credentials and port.
 // Example: https://username:password@golang.org:443
-func NewHTTPConnectDialer(proxyUrlStr string) (*HTTPConnectDialer, error) {
-	proxyUrl, err := url.Parse(proxyUrlStr)
+func NewHTTPConnectDialer(proxyURLStr string) (*HTTPConnectDialer, error) {
+	proxyURL, err := url.Parse(proxyURLStr)
 	if err != nil {
 		return nil, err
 	}
 
-	if proxyUrl.Host == "" {
-		return nil, errors.New("misparsed `url=" + proxyUrlStr +
+	if proxyURL.Host == "" {
+		return nil, errors.New("misparsed `url=" + proxyURLStr +
 			"`, make sure to specify full url like https://username:password@hostname.com:443/")
 	}
 
-	switch proxyUrl.Scheme {
+	switch proxyURL.Scheme {
 	case "http":
-		if proxyUrl.Port() == "" {
-			proxyUrl.Host = net.JoinHostPort(proxyUrl.Host, "80")
+		if proxyURL.Port() == "" {
+			proxyURL.Host = net.JoinHostPort(proxyURL.Host, "80")
 		}
 	case "https":
-		if proxyUrl.Port() == "" {
-			proxyUrl.Host = net.JoinHostPort(proxyUrl.Host, "443")
+		if proxyURL.Port() == "" {
+			proxyURL.Host = net.JoinHostPort(proxyURL.Host, "443")
 		}
 	case "":
 		return nil, errors.New("specify scheme explicitly (https://)")
 	default:
-		return nil, errors.New("scheme " + proxyUrl.Scheme + " is not supported")
+		return nil, errors.New("scheme " + proxyURL.Scheme + " is not supported")
 	}
 
 	client := &HTTPConnectDialer{
-		ProxyUrl:          *proxyUrl,
+		ProxyURL:          *proxyURL,
 		DefaultHeader:     make(http.Header),
 		SpkiFP:            nil,
 		EnableH2ConnReuse: true,
 	}
 
-	if proxyUrl.User != nil {
-		if proxyUrl.User.Username() != "" {
-			password, _ := proxyUrl.User.Password()
+	if proxyURL.User != nil {
+		if proxyURL.User.Username() != "" {
+			password, _ := proxyURL.User.Password()
 			client.DefaultHeader.Set("Proxy-Authorization", "Basic "+
-				base64.StdEncoding.EncodeToString([]byte(proxyUrl.User.Username()+":"+password)))
+				base64.StdEncoding.EncodeToString([]byte(proxyURL.User.Username()+":"+password)))
 		}
 	}
 	return client, nil
@@ -132,12 +132,12 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 
 		resp, err := h2clientConn.RoundTrip(req)
 		if err != nil {
-			rawConn.Close()
+			err = rawConn.Close()
 			return nil, err
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			rawConn.Close()
+			_ = rawConn.Close()
 			return nil, errors.New("Proxy responded with non 200 code: " + resp.Status)
 		}
 		return NewHttp2Conn(rawConn, pw, resp.Body), nil
@@ -150,18 +150,18 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 
 		err := req.Write(rawConn)
 		if err != nil {
-			rawConn.Close()
+			err = rawConn.Close()
 			return nil, err
 		}
 
 		resp, err := http.ReadResponse(bufio.NewReader(rawConn), req)
 		if err != nil {
-			rawConn.Close()
+			err = rawConn.Close()
 			return nil, err
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			rawConn.Close()
+			_ = rawConn.Close()
 			return nil, errors.New("Proxy responded with non 200 code: " + resp.Status)
 		}
 		return rawConn, nil
@@ -191,24 +191,25 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 	var err error
 	var rawConn net.Conn
 	negotiatedProtocol := ""
-	switch c.ProxyUrl.Scheme {
+	switch c.ProxyURL.Scheme {
 	case "http":
-		rawConn, err = c.Dialer.DialContext(ctx, network, c.ProxyUrl.Host)
+		rawConn, err = c.Dialer.DialContext(ctx, network, c.ProxyURL.Host)
 		if err != nil {
 			return nil, err
 		}
 	case "https":
 		if c.DialTLS != nil {
-			rawConn, negotiatedProtocol, err = c.DialTLS(network, c.ProxyUrl.Host)
+			rawConn, negotiatedProtocol, err = c.DialTLS(network, c.ProxyURL.Host)
 			if err != nil {
 				return nil, err
 			}
 		} else {
 			tlsConf := tls.Config{
 				NextProtos: []string{"h2", "http/1.1"},
-				ServerName: c.ProxyUrl.Hostname(),
+				ServerName: c.ProxyURL.Hostname(),
+				MinVersion: tls.VersionTLS12,
 			}
-			tlsConn, err := tls.Dial(network, c.ProxyUrl.Host, &tlsConf)
+			tlsConn, err := tls.Dial(network, c.ProxyURL.Host, &tlsConf)
 			if err != nil {
 				return nil, err
 			}
@@ -220,7 +221,7 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 			rawConn = tlsConn
 		}
 	default:
-		return nil, errors.New("scheme " + c.ProxyUrl.Scheme + " is not supported")
+		return nil, errors.New("scheme " + c.ProxyURL.Scheme + " is not supported")
 	}
 
 	switch negotiatedProtocol {
@@ -232,13 +233,13 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 		t := http2.Transport{}
 		h2clientConn, err := t.NewClientConn(rawConn)
 		if err != nil {
-			rawConn.Close()
+			err = rawConn.Close()
 			return nil, err
 		}
 
 		proxyConn, err := connectHttp2(rawConn, h2clientConn)
 		if err != nil {
-			rawConn.Close()
+			err = rawConn.Close()
 			return nil, err
 		}
 		if c.EnableH2ConnReuse {
@@ -249,7 +250,7 @@ func (c *HTTPConnectDialer) DialContext(ctx context.Context, network, address st
 		}
 		return proxyConn, err
 	default:
-		rawConn.Close()
+		_ = rawConn.Close()
 		return nil, errors.New("negotiated unsupported application layer protocol: " +
 			negotiatedProtocol)
 	}
@@ -274,8 +275,13 @@ func (h *http2Conn) Write(p []byte) (n int, err error) {
 }
 
 func (h *http2Conn) Close() error {
-	h.in.Close()
-	return h.out.Close()
+	inErr := h.in.Close()
+	outErr := h.out.Close()
+
+	if inErr != nil {
+		return inErr
+	}
+	return outErr
 }
 
 func (h *http2Conn) CloseConn() error {

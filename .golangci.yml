@@ -1,4 +1,0 @@
-# golangci linter currently requires a config file to 
-# disable checking of the test files
-run:
-  tests: false

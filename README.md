@@ -1,7 +1,81 @@
-# Secure forward proxy plugin for the Caddy web server
+# Secure forward proxy for the Caddy web server
 
-[![Build Status](https://travis-ci.org/caddyserver/forwardproxy.svg?branch=master)](https://travis-ci.org/caddyserver/forwardproxy)  
-[![Join the chat at https://gitter.im/forwardproxy/Lobby](https://badges.gitter.im/forwardproxy/Lobby.svg)](https://gitter.im/forwardproxy/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+This package registers the `http.handlers.forward_proxy` module, which acts as an HTTPS proxy for accessing remote networks.
+
+## :warning: Experimental!
+
+This module is EXPERIMENTAL. We need more users to test this module for bugs and weaknesses before we recommend its use from within surveilled networks or regions with active censorship. Do not rely on this code in situations where personal safety, freedom, or privacy are at risk.
+
+**You can help by:**
+
+- Safely deploying this module
+- Trying to break it
+- Contributing to the code and tests in this repo to make it better
+
+We are also seeking experienced maintainers who have experience with these kinds of technologies and who are interested in continuing its development.
+
+**Expect breaking changes.**
+
+## Features
+
+- HTTP/1.1 and HTTP/2 support
+- Authentication
+- Access control lists
+- Optional probe resistance
+- PAC file
+
+
+## Introduction
+
+This Caddy module allows you to use your web server as a proxy server, configurable by numerous HTTP clients such as operating systems, web browsers, mobile devices, and apps. However, the feature set of each client varies widely, as does their correctness and security guarantees. You will have to be aware of each clients' individual weaknesses or shortcomings.
+
+
+## Quick start
+
+First, you will have to know [how to use Caddy](https://caddyserver.com/docs/getting-started).
+
+Build Caddy with this plugin. You can add it from [Caddy's download page](https://caddyserver.com/download) or build it yourself with [xcaddy](https://github.com/caddyserver/xcaddy):
+
+```
+$ xcaddy build --with github.com/caddyserver/forwardproxy@caddy2
+```
+
+Most people prefer the [Caddyfile](https://caddyserver.com/docs/caddyfile) for configuration. You can stand up a simple, wide-open unauthenticated forward proxy like this:
+
+```
+example.com
+
+route {
+	# UNAUTHENTICATED! USE ONLY FOR TESTING
+	forward_proxy
+}
+```
+
+(Obviously, replace `example.com` with your domain name which is pointed at your machine.)
+
+Because `forward_proxy` is not a standard directive, its ordering relative to other handler directives is not defined, so we put it inside a `route` block. You can alternatively do something like this:
+
+```
+{
+	order forward_proxy before file_server
+}
+
+example.com
+
+# UNAUTHENTICATED! USE ONLY FOR TESTING
+forward_proxy
+```
+
+to define its position globally; then you don't need `route` blocks. The correct order is up to you and depends on your config.
+
+
+
+
+
+
+
+
+
 
 
 This plugin enables [Caddy](https://caddyserver.com) to act as a forward proxy, with support for HTTP/2.0 and HTTP/1.1 requests. HTTP/2.0 will usually improve performance due to multiplexing.
@@ -14,31 +88,36 @@ For a complete list of features and their usage, see Caddyfile syntax:
 
 ## Caddyfile Syntax (Server Configuration)
 
-The simplest way to enable the forward proxy without authentication just include the `forwardproxy` directive in your Caddyfile. However, this allows anyone to use your server as a proxy, which might not be desirable.
+The simplest way to enable the forward proxy without authentication just include the `forward_proxy` directive in your Caddyfile. However, this allows anyone to use your server as a proxy, which might not be desirable.
 
-Open a block for more control; here's an example of all properties in use (note that the syntax is subject to change):
+The `forward_proxy` directive has no default order and must be used within a `route` directive to explicitly specify its order of evaluation. In the Caddyfile the addresses must start with `:443` for the `forward_proxy` to work for proxy requests of all origins.
+
+Here's an example of all properties in use (note that the syntax is subject to change):
 
 ```
-forwardproxy {
-    basicauth user1 password1
-    basicauth user2 password2
-    ports     80 443
-    hide_ip
-    hide_via
-    probe_resistance secret-link-kWWL9Q.com # alternatively you can use a real domain, such as caddyserver.com
-    serve_pac        /secret-proxy.pac
-    response_timeout 30
-    dial_timeout     30
-    upstream         https://user:password@extra-upstream-hop.com
-    acl {
-      allow     *.caddyserver.com
-      deny      192.168.1.1/32 192.168.0.0/16 *.prohibitedsite.com *.localhost
-      allow     ::1/128 8.8.8.8 github.com *.github.io
-      allowfile /path/to/whitelist.txt
-      denyfile  /path/to/blacklist.txt
-      allow     all
-      deny      all # unreachable rule, remaining requests are matched by `allow all` above
-    }
+:443, example.com
+route {
+	forward_proxy {
+		basic_auth user1 0NtCL2JPJBgPPMmlPcJ
+		basic_auth user2 密码
+		ports     80 443
+		hide_ip
+		hide_via
+		probe_resistance secret-link-kWWL9Q.com # alternatively you can use a real domain, such as caddyserver.com
+		serve_pac        /secret-proxy.pac
+		dial_timeout     30
+		upstream         https://user:password@extra-upstream-hop.com
+		acl {
+			allow     *.caddyserver.com
+			deny      192.168.1.1/32 192.168.0.0/16 *.prohibitedsite.com *.localhost
+			allow     ::1/128 8.8.8.8 github.com *.github.io
+			allow_file /path/to/whitelist.txt
+			deny_file  /path/to/blacklist.txt
+			allow     all
+			deny      all # unreachable rule, remaining requests are matched by `allow all` above
+		}
+	}
+	file_server
 }
 ```
 
@@ -46,16 +125,16 @@ forwardproxy {
 
 ##### Security
 
-- **basicauth [user] [password]**  
-Sets basic HTTP auth credentials. This property may be repeated multiple times. Note that this is different from Caddy's built-in `basicauth` directive. BE SURE TO CHECK THE NAME OF THE SITE THAT IS REQUESTING CREDENTIALS BEFORE YOU ENTER THEM.  
+- **basic_auth [user] [password]**  
+Sets basic HTTP auth credentials. This property may be repeated multiple times. Note that this is different from Caddy's built-in `basic_auth` directive. BE SURE TO CHECK THE NAME OF THE SITE THAT IS REQUESTING CREDENTIALS BEFORE YOU ENTER THEM.  
 _Default: no authentication required._
 
 - **probe_resistance [secretlink.tld]**  
 Attempts to hide the fact that the site is a forward proxy.
 Proxy will no longer respond with "407 Proxy Authentication Required" if credentials are incorrect or absent,
 and will attempt to mimic a generic Caddy web server as if the forward proxy is not enabled.  
-Probing resistance works (and makes sense) only if basicauth is set up.
-To use your proxy with probe resistance, supply your basicauth credentials to your client configuration.
+Probing resistance works (and makes sense) only if `basic_auth` is set up.
+To use your proxy with probe resistance, supply your `basic_auth` credentials to your client configuration.
 If your proxy client(browser, operating system, browser extension, etc)
 allows you to preconfigure credentials, and sends credentials preemptively, you do not need secret link.  
 If your proxy client does not preemptively send credentials, you will have to visit your secret link in your browser to trigger the authentication.
@@ -90,24 +169,24 @@ Specifies **order** and rules for allowed destination IP networks, IP addresses 
 The hostname in each forwardproxy request will be resolved to an IP address,
 and caddy will check the IP address and hostname against the directives in order until a directive matches the request.
 acl_directive may be:
-  - **allow [ip or subnet or hostname] [ip or subnet or hostname]...**
-  - **allowfile /path/to/whitelist.txt**
-  - **deny [ip or subnet or hostname] [ip or subnet or hostname]...**
-  - **denyfile /path/to/blacklist.txt**
+	- **allow [ip or subnet or hostname] [ip or subnet or hostname]...**
+	- **allow_file /path/to/whitelist.txt**
+	- **deny [ip or subnet or hostname] [ip or subnet or hostname]...**
+	- **deny_file /path/to/blacklist.txt**
 
-  If you don't want unmatched requests to be subject to the default policy, you could finish
-  your acl rules with one of the following to specify action on unmatched requests:
-  - **allow all**
-  - **deny all**
-  
-  For hostname, you can specify `*.` as a prefix to match domain and subdomains. For example,
-  `*.caddyserver.com` will match `caddyserver.com`, `subdomain.caddyserver.com`, but not `fakecaddyserver.com`.
-  Note that hostname rules, matched early in the chain, will override later IP rules,
-  so it is advised to put IP rules first, unless domains are highly trusted and should override the
-  IP rules. Also note that domain-based blacklists are easily circumventable by directly specifying the IP.  
-  For `allowfile`/`denyfile` directives, syntax is the same, and each entry must be separated by newline.  
-  This policy applies to all requests except requests to the proxy's own domain and port.
-  Whitelisting/blacklisting of ports on per-host/IP basis is not supported.  
+	If you don't want unmatched requests to be subject to the default policy, you could finish
+	your acl rules with one of the following to specify action on unmatched requests:
+	- **allow all**
+	- **deny all**
+	
+	For hostname, you can specify `*.` as a prefix to match domain and subdomains. For example,
+	`*.caddyserver.com` will match `caddyserver.com`, `subdomain.caddyserver.com`, but not `fakecaddyserver.com`.
+	Note that hostname rules, matched early in the chain, will override later IP rules,
+	so it is advised to put IP rules first, unless domains are highly trusted and should override the
+	IP rules. Also note that domain-based blacklists are easily circumventable by directly specifying the IP.  
+	For `allow_file`/`deny_file` directives, syntax is the same, and each entry must be separated by newline.  
+	This policy applies to all requests except requests to the proxy's own domain and port.
+	Whitelisting/blacklisting of ports on per-host/IP basis is not supported.  
 _Default policy:_  
 acl {  
 &nbsp;&nbsp;&nbsp;&nbsp;deny 10.0.0.0/8 127.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1/128 fe80::/10  
@@ -116,10 +195,6 @@ acl {
 _Default deny rules intend to prohibit access to localhost and local networks and may be expanded in future._
 
 ##### Timeouts
-
-- **response_timeout [integer]**  
-Sets timeout (in seconds) to get full response for HTTP requests made by proxy on behalf of users (does not affect `CONNECT`-method requests).  
-_Default: no timeout._
 
 - **dial_timeout [integer]**  
 Sets timeout (in seconds) for establishing TCP connection to target website. Affects all requests.  
@@ -146,11 +221,11 @@ Don't forget to add `http.forwardproxy` plugin.
 
 #### Build from source
 
-0. Install latest Golang 1.12 or above and set export GO111MODULE=on
+0. Install latest Golang 1.20 or above and set export GO111MODULE=on
 1. ```bash
-   go install github.com/caddyserver/forwardproxy/cmd/caddy
-   ```   
-   Built `caddy` binary will be stored in $GOPATH/bin.  
+	 go install github.com/caddyserver/forwardproxy/cmd/caddy@latest
+	 ```   
+	 Built `caddy` binary will be stored in $GOPATH/bin.  
 
 ## Client Configuration
 
