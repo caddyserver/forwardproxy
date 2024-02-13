@@ -299,13 +299,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 			fallthrough
 		case 3:
 			defer r.Body.Close()
-			wFlusher, ok := w.(http.Flusher)
-			if !ok {
-				return caddyhttp.Error(http.StatusInternalServerError,
-					fmt.Errorf("ResponseWriter doesn't implement http.Flusher"))
-			}
 			w.WriteHeader(http.StatusOK)
-			wFlusher.Flush()
+			err := http.NewResponseController(w).Flush()
+			if err != nil {
+				return caddyhttp.Error(http.StatusInternalServerError,
+					fmt.Errorf("ResponseWriter flush error: %v", err))
+			}
 			return dualStream(targetConn, r.Body, w)
 		}
 
@@ -586,12 +585,7 @@ func serveHiddenPage(w http.ResponseWriter, authErr error) error {
 // Hijacks the connection from ResponseWriter, writes the response and proxies data between targetConn
 // and hijacked connection.
 func serveHijack(w http.ResponseWriter, targetConn net.Conn) error {
-	hijacker, ok := w.(http.Hijacker)
-	if !ok {
-		return caddyhttp.Error(http.StatusInternalServerError,
-			fmt.Errorf("ResponseWriter does not implement http.Hijacker"))
-	}
-	clientConn, bufReader, err := hijacker.Hijack()
+	clientConn, bufReader, err := http.NewResponseController(w).Hijack()
 	if err != nil {
 		return caddyhttp.Error(http.StatusInternalServerError,
 			fmt.Errorf("hijack failed: %v", err))
@@ -664,20 +658,25 @@ type closeWriter interface {
 // If dst does not implement http.Flusher(e.g. net.TCPConn), it will do a simple io.CopyBuffer().
 // Reasoning: http2ResponseWriter will not flush on its own, so we have to do it manually.
 func flushingIoCopy(dst io.Writer, src io.Reader, buf []byte) (written int64, err error) {
-	flusher, ok := dst.(http.Flusher)
+	rw, ok := dst.(http.ResponseWriter)
 	if !ok {
 		return io.CopyBuffer(dst, src, buf)
 	}
+	rc := http.NewResponseController(rw)
 	for {
 		nr, er := src.Read(buf)
 		if nr > 0 {
 			nw, ew := dst.Write(buf[0:nr])
-			flusher.Flush()
 			if nw > 0 {
 				written += int64(nw)
 			}
 			if ew != nil {
 				err = ew
+				break
+			}
+			ef := rc.Flush()
+			if ef != nil {
+				err = ef
 				break
 			}
 			if nr != nw {

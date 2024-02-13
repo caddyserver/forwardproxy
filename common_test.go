@@ -3,13 +3,9 @@ package forwardproxy
 import (
 	"context"
 	"crypto/tls"
-	"encoding/hex"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"os"
 	"strconv"
 	"testing"
@@ -68,7 +64,7 @@ type caddyTestServer struct {
 	httpRedirPort string // used in probe-resist tests to simulate default Caddy's http->https redirect
 
 	root         string // expected to have index.html and pic.png
-	directives   []string
+	_            []string
 	proxyHandler *Handler
 	contents     map[string][]byte
 }
@@ -365,7 +361,7 @@ func TestMain(m *testing.M) {
 
 	retCode := m.Run()
 
-	caddy.Stop()
+	caddy.Stop() // nolint:errcheck // ignore error on shutdown
 
 	os.Exit(retCode)
 }
@@ -413,66 +409,6 @@ func TestTheTest(t *testing.T) {
 		t.Fatal(err)
 	} else if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("Expected: 404 StatusNotFound, got %d. Response: %#v\n", resp.StatusCode, resp)
-	}
-}
-
-func debugIoCopy(dst io.Writer, src io.Reader, prefix string) (written int64, err error) {
-	buf := make([]byte, 32*1024)
-	flusher, ok := dst.(http.Flusher)
-	for {
-		nr, er := src.Read(buf)
-		fmt.Printf("[%s] Read err %#v\n%s", prefix, er, hex.Dump(buf[0:nr]))
-		if nr > 0 {
-			nw, ew := dst.Write(buf[0:nr])
-			if ok {
-				flusher.Flush()
-			}
-			fmt.Printf("[%s] Wrote %v %v\n", prefix, nw, ew)
-			if nw > 0 {
-				written += int64(nw)
-			}
-			if ew != nil {
-				err = ew
-				break
-			}
-			if nr != nw {
-				err = io.ErrShortWrite
-				break
-			}
-		}
-		if er != nil {
-			if er != io.EOF {
-				err = er
-			}
-			break
-		}
-	}
-	fmt.Printf("[%s] Returning with %#v %#v\n", prefix, written, err)
-	return
-}
-
-func httpdump(r interface{}) string {
-	switch v := r.(type) {
-	case *http.Request:
-		if v == nil {
-			return "httpdump: nil"
-		}
-		b, err := httputil.DumpRequest(v, true)
-		if err != nil {
-			return err.Error()
-		}
-		return string(b)
-	case *http.Response:
-		if v == nil {
-			return "httpdump: nil"
-		}
-		b, err := httputil.DumpResponse(v, true)
-		if err != nil {
-			return err.Error()
-		}
-		return string(b)
-	default:
-		return "httpdump: wrong type"
 	}
 }
 

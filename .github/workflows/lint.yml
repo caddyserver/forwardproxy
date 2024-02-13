@@ -1,0 +1,61 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    branches:
+      - master
+      - main
+    paths-ignore:
+      - "**.md"
+
+permissions:
+  contents: read
+
+jobs:
+  # From https://github.com/golangci/golangci-lint-action
+  golangci:
+    permissions:
+      contents: read # for actions/checkout to fetch code
+      pull-requests: read # for golangci/golangci-lint-action to fetch pull requests
+    name: lint
+    strategy:
+      matrix:
+        os:
+          - linux
+          - windows
+
+        include:
+        - os: linux
+          OS_LABEL: ubuntu-latest
+
+        - os: windows
+          OS_LABEL: windows-latest
+    runs-on: ${{ matrix.OS_LABEL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '~1.22.0'
+          check-latest: true
+          cache: false
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: v1.55.2
+          args: --timeout 10m
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: '~1.22.0'
+          check-latest: true

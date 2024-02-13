@@ -103,6 +103,7 @@ func TestHttpClientH2Multiplexing(t *testing.T) {
 	_test() // do serially at least once
 
 	for i := 0; i < retries; i++ {
+		// nolint:govet // this is a test
 		go _test()
 		time.Sleep(sleepInterval)
 	}

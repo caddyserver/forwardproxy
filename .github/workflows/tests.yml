@@ -18,10 +18,11 @@ jobs:
     strategy:
       matrix:
         go-version:
-          - oldstable
-          - stable
+          - 1.21.x
+          - 1.22.x
         platform:
           - ubuntu-latest
+          - windows-latest
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Fetch Repository

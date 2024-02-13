@@ -88,7 +88,7 @@ func connectAndGetViaProxy(targetHost, resource, proxyAddr, httpTargetVer, proxy
 	case "HTTP/1.1":
 		req.ProtoMajor = 1
 		req.ProtoMinor = 1
-		req.Write(proxyConn)
+		req.Write(proxyConn) // nolint:errcheck // we don't care about the error here
 		resp, err = http.ReadResponse(bufio.NewReader(proxyConn), req)
 		if err != nil {
 			return resp, err
