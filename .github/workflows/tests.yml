@@ -18,7 +18,6 @@ jobs:
     strategy:
       matrix:
         go-version:
-          - 1.21.x
           - 1.22.x
         platform:
           - ubuntu-latest
