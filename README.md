@@ -40,7 +40,7 @@ xcaddy build --with github.com/caddyserver/forwardproxy
 
 Most people prefer the [Caddyfile](https://caddyserver.com/docs/caddyfile) for configuration. You can stand up a simple, wide-open unauthenticated forward proxy like this:
 
-```text
+```caddyfile
 example.com
 route {
     # UNAUTHENTICATED! USE ONLY FOR TESTING
@@ -52,7 +52,7 @@ route {
 
 Because `forward_proxy` is not a standard directive, its ordering relative to other handler directives is not defined, so we put it inside a `route` block. You can alternatively do something like this:
 
-```text
+```caddyfile
 {
     order forward_proxy before file_server
 }
@@ -79,7 +79,7 @@ The `forward_proxy` directive has no default order and must be used within a `ro
 
 Here's an example of all properties in use (note that the syntax is subject to change):
 
-```text
+```caddyfile
 :443, example.com
 route {
 	forward_proxy {
