@@ -54,6 +54,8 @@ func TestHttpClient(t *testing.T) {
 
 	_test("https://"+credentialsCorrectPlain, caddyForwardProxyAuth.addr)
 	_test("http://"+credentialsCorrectPlain, caddyHTTPForwardProxyAuth.addr)
+
+	_test("https://"+credentialsCorrectPlain, caddyForwardProxyAuthHash.addr)
 }
 
 func TestHttpClientH2Multiplexing(t *testing.T) {

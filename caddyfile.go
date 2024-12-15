@@ -2,6 +2,7 @@ package forwardproxy
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"log"
 	"strconv"
 	"strings"
@@ -23,7 +24,7 @@ func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 }
 
 // EncodeAuthCredentials base64-encode credentials
-func EncodeAuthCredentials(user, pass string) (result []byte) {
+func EncodeAuthCredentialsRaw(user, pass string) (result []byte) {
 	raw := []byte(user + ":" + pass)
 	result = make([]byte, base64.StdEncoding.EncodedLen(len(raw)))
 	base64.StdEncoding.Encode(result, raw)
@@ -44,20 +45,43 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 		args := d.RemainingArgs()
 		switch subdirective {
 		case "basic_auth":
-			if len(args) != 2 {
+			if len(args) < 2 || len(args) > 3 {
 				return d.ArgErr()
 			}
+			if len(args) == 2 {
+				args = append(args, "RAW") // Default value
+			}
+			args[2] = strings.ToUpper(args[2]) // algo is case insensitive
 			if len(args[0]) == 0 {
 				return d.Err("empty usernames are not allowed")
 			}
-			// TODO: Evaluate policy of allowing empty passwords.
 			if strings.Contains(args[0], ":") {
 				return d.Err("character ':' in usernames is not allowed")
 			}
 			if h.AuthCredentials == nil {
-				h.AuthCredentials = [][]byte{}
+				h.AuthCredentials = []AuthCredential{}
 			}
-			h.AuthCredentials = append(h.AuthCredentials, EncodeAuthCredentials(args[0], args[1]))
+
+			var ac AuthCredential
+			switch args[2] {
+			case "RAW":
+				// TODO: Evaluate policy of allowing empty passwords.
+				ac = AuthCredential{Algo: RAW, RawString: EncodeAuthCredentialsRaw(args[0], args[1])}
+			case "SHA256":
+				if len(args[1]) != 64 {
+					return d.Err("password hash should be 64 chars long")
+				}
+				hash, err := hex.DecodeString(args[1])
+				if err != nil {
+					return d.Errf("password hash is not valid hex string: %s", err.Error())
+				}
+				ac = AuthCredential{Algo: SHA256, User: args[0], Hash: hash}
+			default:
+				return d.Err("only 'RAW' and 'SHA256' algorithms are supported for basic_auth")
+			}
+
+			h.AuthCredentials = append(h.AuthCredentials, ac)
+
 		case "hosts":
 			if len(args) == 0 {
 				return d.ArgErr()

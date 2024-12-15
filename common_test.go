@@ -72,6 +72,7 @@ type caddyTestServer struct {
 var (
 	caddyForwardProxy            caddyTestServer
 	caddyForwardProxyAuth        caddyTestServer // requires auth
+	caddyForwardProxyAuthHash    caddyTestServer // requires auth, does not use TLS, hashed password
 	caddyHTTPForwardProxyAuth    caddyTestServer // requires auth, does not use TLS
 	caddyForwardProxyProbeResist caddyTestServer // requires auth, and has probing resistance on
 	caddyDummyProbeResist        caddyTestServer // same as caddyForwardProxyProbeResist, but w/o forwardproxy
@@ -199,7 +200,18 @@ func TestMain(m *testing.M) {
 		proxyHandler: &Handler{
 			PACPath:         defaultPACPath,
 			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
-			AuthCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
+			AuthCredentials: []AuthCredential{{Algo: RAW, RawString: EncodeAuthCredentialsRaw("test", "pass")}},
+		},
+	}
+
+	caddyForwardProxyAuthHash = caddyTestServer{
+		addr: "127.0.69.73:6974",
+		root: "./test/forwardproxy",
+		tls:  true,
+		proxyHandler: &Handler{
+			PACPath:         defaultPACPath,
+			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
+			AuthCredentials: []AuthCredential{{Algo: SHA256, User: "test", Hash: Sha_256("pass")}},
 		},
 	}
 
@@ -209,7 +221,7 @@ func TestMain(m *testing.M) {
 		proxyHandler: &Handler{
 			PACPath:         defaultPACPath,
 			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
-			AuthCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
+			AuthCredentials: []AuthCredential{{Algo: RAW, RawString: EncodeAuthCredentialsRaw("test", "pass")}},
 		},
 	}
 
@@ -221,7 +233,7 @@ func TestMain(m *testing.M) {
 			PACPath:         "/superhiddenfile.pac",
 			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
 			ProbeResistance: &ProbeResistance{Domain: "test.localhost"},
-			AuthCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
+			AuthCredentials: []AuthCredential{{Algo: RAW, RawString: EncodeAuthCredentialsRaw("test", "pass")}},
 		},
 		httpRedirPort: "8880",
 	}
@@ -249,7 +261,7 @@ func TestMain(m *testing.M) {
 		tls:  true,
 		proxyHandler: &Handler{
 			Upstream:        "https://test:pass@127.0.0.1:4891",
-			AuthCredentials: [][]byte{EncodeAuthCredentials("upstreamtest", "upstreampass")},
+			AuthCredentials: []AuthCredential{{Algo: RAW, RawString: EncodeAuthCredentialsRaw("upstreamtest", "upstreampass")}},
 		},
 	}
 
@@ -292,6 +304,7 @@ func TestMain(m *testing.M) {
 		Servers: map[string]*caddyhttp.Server{
 			"caddyForwardProxy":                    caddyForwardProxy.server(),
 			"caddyForwardProxyAuth":                caddyForwardProxyAuth.server(),
+			"caddyForwardProxyAuthHash":            caddyForwardProxyAuthHash.server(),
 			"caddyHTTPForwardProxyAuth":            caddyHTTPForwardProxyAuth.server(),
 			"caddyForwardProxyProbeResist":         caddyForwardProxyProbeResist.server(),
 			"caddyDummyProbeResist":                caddyDummyProbeResist.server(),

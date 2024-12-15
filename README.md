@@ -87,6 +87,7 @@ route {
 	forward_proxy {
 		basic_auth user1 0NtCL2JPJBgPPMmlPcJ
 		basic_auth user2 密码
+		basic_auth user3 d74ff0ee8da3b9806b18c877dbf29bbde50b5bd8e4dad7a3a725000feb82e8f1 SHA256 # Third arg to specify hash algo
 		ports     80 443
 		hide_ip
 		hide_via
@@ -114,6 +115,8 @@ route {
 
 - `basic_auth [user] [password]`  
   Sets basic HTTP auth credentials. This property may be repeated multiple times. Note that this is different from Caddy's built-in `basic_auth` directive. BE SURE TO CHECK THE NAME OF THE SITE THAT IS REQUESTING CREDENTIALS BEFORE YOU ENTER THEM.
+
+  It is also possible to provide auth credentials with an hashed password. For now, the password must be SHA-256 encoded, provided in hex string format.
 
   Default: no authentication required.
 - `probe_resistance [secretlink.tld]`  

@@ -230,12 +230,44 @@ func TestGETAuthCorrect(t *testing.T) {
 	}
 }
 
+func TestGETAuthCorrectHash(t *testing.T) {
+	const useTLS = true
+	for _, httpProxyVer := range testHTTPProxyVersions {
+		for _, resource := range testResources {
+			response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyAuthHash.addr, httpProxyVer, credentialsCorrect, useTLS)
+			if err != nil {
+				t.Fatal(err)
+			} else if err = responseExpected(response, caddyHTTPTestTarget.contents[resource]); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
 func TestGETAuthWrong(t *testing.T) {
 	const useTLS = true
 	for _, wrongCreds := range credentialsWrong {
 		for _, httpProxyVer := range testHTTPProxyVersions {
 			for _, resource := range testResources {
 				response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyAuth.addr, httpProxyVer, wrongCreds, useTLS)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if response.StatusCode != http.StatusProxyAuthRequired {
+					t.Fatalf("Expected response: 407 StatusProxyAuthRequired, Got: %d %s\n",
+						response.StatusCode, response.Status)
+				}
+			}
+		}
+	}
+}
+
+func TestGETAuthWrongHash(t *testing.T) {
+	const useTLS = true
+	for _, wrongCreds := range credentialsWrong {
+		for _, httpProxyVer := range testHTTPProxyVersions {
+			for _, resource := range testResources {
+				response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyAuthHash.addr, httpProxyVer, wrongCreds, useTLS)
 				if err != nil {
 					t.Fatal(err)
 				}

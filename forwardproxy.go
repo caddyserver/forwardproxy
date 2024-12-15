@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
 	"encoding/base64"
@@ -47,6 +48,20 @@ import (
 
 func init() {
 	caddy.RegisterModule(Handler{})
+}
+
+type AuthCredentialAlgo int
+
+const (
+	RAW    AuthCredentialAlgo = iota // String in config: "RAW"
+	SHA256                           // String in config: "SHA256"
+)
+
+type AuthCredential struct {
+	Algo      AuthCredentialAlgo // RAW, SHA256
+	RawString []byte             // The 'RAW' case is still fast
+	User      string             // Has a value if Algo != 'RAW'
+	Hash      []byte             // Has a value if Algo != 'RAW', raw bytes
 }
 
 // Handler implements a forward proxy.
@@ -92,7 +107,7 @@ type Handler struct {
 	aclRules []aclRule
 
 	// TODO: temporary/deprecated - we should try to reuse existing authentication modules instead!
-	AuthCredentials [][]byte `json:"auth_credentials,omitempty"` // slice with base64-encoded credentials
+	AuthCredentials []AuthCredential // parsed auth credentials
 }
 
 // CaddyModule returns the Caddy module information.
@@ -145,7 +160,7 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	h.aclRules = append(h.aclRules, &aclAllRule{allow: true})
 
 	if h.ProbeResistance != nil {
-		if h.AuthCredentials == nil {
+		if len(h.AuthCredentials) == 0 {
 			return fmt.Errorf("probe resistance requires authentication")
 		}
 		if len(h.ProbeResistance.Domain) > 0 {
@@ -227,7 +242,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 	}
 
 	var authErr error
-	if h.AuthCredentials != nil {
+	if len(h.AuthCredentials) > 0 {
 		authErr = h.checkCredentials(r)
 	}
 	if h.ProbeResistance != nil && len(h.ProbeResistance.Domain) > 0 && reqHost == h.ProbeResistance.Domain {
@@ -411,16 +426,30 @@ func (h Handler) checkCredentials(r *http.Request) error {
 		return errors.New("auth type is not supported")
 	}
 	for _, creds := range h.AuthCredentials {
-		if subtle.ConstantTimeCompare(creds, []byte(pa[1])) == 1 {
-			repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-			buf := make([]byte, base64.StdEncoding.DecodedLen(len(creds)))
-			_, _ = base64.StdEncoding.Decode(buf, creds) // should not err ever since we are decoding a known good input
-			cred := string(buf)
-			repl.Set("http.auth.user.id", cred[:strings.IndexByte(cred, ':')])
-			// Please do not consider this to be timing-attack-safe code. Simple equality is almost
-			// mindlessly substituted with constant time algo and there ARE known issues with this code,
-			// e.g. size of smallest credentials is guessable. TODO: protect from all the attacks! Hash?
-			return nil
+		switch creds.Algo {
+		case RAW: // Plaintext username/password
+			if subtle.ConstantTimeCompare(creds.RawString, []byte(pa[1])) == 1 {
+				repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
+				buf := make([]byte, base64.StdEncoding.DecodedLen(len(creds.RawString)))
+				_, _ = base64.StdEncoding.Decode(buf, creds.RawString) // should not err ever since we are decoding a known good input
+				cred := string(buf)
+				repl.Set("http.auth.user.id", cred[:strings.IndexByte(cred, ':')])
+				// Please do not consider this to be timing-attack-safe code. Simple equality is almost
+				// mindlessly substituted with constant time algo and there ARE known issues with this code,
+				// e.g. size of smallest credentials is guessable. TODO: protect from all the attacks! Hash?
+				return nil
+			}
+		case SHA256: // SHA-256 hashed (even less timing-attack-safe code)
+			// TODO: cache the password for faster auth?
+			p, _ := base64.StdEncoding.DecodeString(pa[1]) // should not err ever since we are decoding a known good input
+			proposedCreds := strings.Split(string(p), ":")
+			if len(proposedCreds) == 2 && subtle.ConstantTimeCompare(creds.Hash, Sha_256(proposedCreds[1])) == 1 {
+				repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
+				repl.Set("http.auth.user.id", proposedCreds[0])
+				return nil
+			}
+		default:
+			// impossible, as checked in provisioning
 		}
 	}
 	repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
@@ -783,6 +812,12 @@ func readLinesFromFile(filename string) ([]string, error) {
 	}
 
 	return hostnames, scanner.Err()
+}
+
+// Returns the sha256 of a string as a slice
+func Sha_256(str string) []byte {
+	hash := sha256.Sum256([]byte(str))
+	return hash[:]
 }
 
 // Interface guards
