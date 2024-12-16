@@ -244,6 +244,20 @@ func TestGETAuthCorrectHash(t *testing.T) {
 	}
 }
 
+func TestGETAuthCorrectHashWithCache(t *testing.T) {
+	const useTLS = true
+	for _, httpProxyVer := range testHTTPProxyVersions {
+		for _, resource := range testResources {
+			response, err := getViaProxy(caddyHTTPTestTarget.addr, resource, caddyForwardProxyAuthHash.addr, httpProxyVer, credentialsCorrect, useTLS)
+			if err != nil {
+				t.Fatal(err)
+			} else if err = responseExpected(response, caddyHTTPTestTarget.contents[resource]); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
 func TestGETAuthWrong(t *testing.T) {
 	const useTLS = true
 	for _, wrongCreds := range credentialsWrong {
