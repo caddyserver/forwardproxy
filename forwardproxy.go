@@ -57,11 +57,28 @@ const (
 	SHA256                           // String in config: "SHA256"
 )
 
+// Mutex to update AuthCredential.RawString thread-safely
+// It's global, but performance-wise it's still ok as writings
+// are by far less frequent than readings
+var Mutex sync.RWMutex
+
 type AuthCredential struct {
 	Algo      AuthCredentialAlgo // RAW, SHA256
-	RawString []byte             // The 'RAW' case is still fast
+	RawString string             // The 'RAW' case is still fast
 	User      string             // Has a value if Algo != 'RAW'
 	Hash      []byte             // Has a value if Algo != 'RAW', raw bytes
+}
+
+func (ac *AuthCredential) SetRawString(str string) {
+	Mutex.Lock()
+	defer Mutex.Unlock()
+	ac.RawString = str
+}
+
+func (ac AuthCredential) GetRawString() []byte {
+	Mutex.RLock()
+	defer Mutex.RUnlock()
+	return []byte(ac.RawString)
 }
 
 // Handler implements a forward proxy.
@@ -426,12 +443,12 @@ func (h Handler) checkCredentials(r *http.Request) error {
 		return errors.New("auth type is not supported")
 	}
 	for _, creds := range h.AuthCredentials {
-		switch creds.Algo {
-		case RAW: // Plaintext username/password
-			if subtle.ConstantTimeCompare(creds.RawString, []byte(pa[1])) == 1 {
+		rawCreds := creds.GetRawString()
+		if len(rawCreds) > 0 { // Implies RAW or hashed (after the first auth that caches it)
+			if subtle.ConstantTimeCompare(rawCreds, []byte(pa[1])) == 1 {
 				repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-				buf := make([]byte, base64.StdEncoding.DecodedLen(len(creds.RawString)))
-				_, _ = base64.StdEncoding.Decode(buf, creds.RawString) // should not err ever since we are decoding a known good input
+				buf := make([]byte, base64.StdEncoding.DecodedLen(len(rawCreds)))
+				_, _ = base64.StdEncoding.Decode(buf, rawCreds) // should not err ever since we are decoding a known good input
 				cred := string(buf)
 				repl.Set("http.auth.user.id", cred[:strings.IndexByte(cred, ':')])
 				// Please do not consider this to be timing-attack-safe code. Simple equality is almost
@@ -439,17 +456,20 @@ func (h Handler) checkCredentials(r *http.Request) error {
 				// e.g. size of smallest credentials is guessable. TODO: protect from all the attacks! Hash?
 				return nil
 			}
-		case SHA256: // SHA-256 hashed (even less timing-attack-safe code)
-			// TODO: cache the password for faster auth?
-			p, _ := base64.StdEncoding.DecodeString(pa[1]) // should not err ever since we are decoding a known good input
-			proposedCreds := strings.Split(string(p), ":")
-			if len(proposedCreds) == 2 && subtle.ConstantTimeCompare(creds.Hash, Sha_256(proposedCreds[1])) == 1 {
-				repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-				repl.Set("http.auth.user.id", proposedCreds[0])
-				return nil
+		} else {
+			switch creds.Algo { // It's a switch because of future algorithms
+			case SHA256: // SHA-256 hashed (even less timing-attack-safe code)
+				p, _ := base64.StdEncoding.DecodeString(pa[1]) // should not err ever since we are decoding a known good input
+				proposedCreds := strings.Split(string(p), ":")
+				if len(proposedCreds) == 2 && subtle.ConstantTimeCompare(creds.Hash, Sha_256(proposedCreds[1])) == 1 {
+					repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
+					repl.Set("http.auth.user.id", proposedCreds[0])
+					creds.SetRawString(string(p))
+					return nil
+				}
+			default:
+				// impossible, as checked in provisioning
 			}
-		default:
-			// impossible, as checked in provisioning
 		}
 	}
 	repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)

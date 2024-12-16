@@ -24,11 +24,11 @@ func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 }
 
 // EncodeAuthCredentials base64-encode credentials
-func EncodeAuthCredentialsRaw(user, pass string) (result []byte) {
+func EncodeAuthCredentialsRaw(user, pass string) string {
 	raw := []byte(user + ":" + pass)
-	result = make([]byte, base64.StdEncoding.EncodedLen(len(raw)))
+	result := make([]byte, base64.StdEncoding.EncodedLen(len(raw)))
 	base64.StdEncoding.Encode(result, raw)
-	return
+	return string(result)
 }
 
 // UnmarshalCaddyfile unmarshals Caddyfile tokens into h.
