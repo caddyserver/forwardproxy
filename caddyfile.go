@@ -10,6 +10,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	caddyauthimported "github.com/proofrock/forwardproxy/caddyauth_imported"
 )
 
 func init() {
@@ -44,20 +45,11 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 		args := d.RemainingArgs()
 		switch subdirective {
 		case "basic_auth":
-			if len(args) != 2 {
-				return d.ArgErr()
+			bam, err := caddyauthimported.ParseCaddyfileForHTTPBasicAuth(d)
+			if err != nil {
+				return err
 			}
-			if len(args[0]) == 0 {
-				return d.Err("empty usernames are not allowed")
-			}
-			// TODO: Evaluate policy of allowing empty passwords.
-			if strings.Contains(args[0], ":") {
-				return d.Err("character ':' in usernames is not allowed")
-			}
-			if h.AuthCredentials == nil {
-				h.AuthCredentials = [][]byte{}
-			}
-			h.AuthCredentials = append(h.AuthCredentials, EncodeAuthCredentials(args[0], args[1]))
+			h.BasicAuthModule = *bam
 		case "hosts":
 			if len(args) == 0 {
 				return d.ArgErr()
