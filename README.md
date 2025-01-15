@@ -2,7 +2,7 @@
 
 This package registers the `http.handlers.forward_proxy` module, which acts as an HTTPS proxy for accessing remote networks.
 
-## :warning: Experimental!
+## :warning: Experimental
 
 This module is EXPERIMENTAL. We need more users to test this module for bugs and weaknesses before we recommend its use from within surveilled networks or regions with active censorship. Do not rely on this code in situations where personal safety, freedom, or privacy are at risk.
 
@@ -24,11 +24,9 @@ We are also seeking experienced maintainers who have experience with these kinds
 - Optional probe resistance
 - PAC file
 
-
 ## Introduction
 
 This Caddy module allows you to use your web server as a proxy server, configurable by numerous HTTP clients such as operating systems, web browsers, mobile devices, and apps. However, the feature set of each client varies widely, as does their correctness and security guarantees. You will have to be aware of each clients' individual weaknesses or shortcomings.
-
 
 ## Quick start
 
@@ -36,17 +34,17 @@ First, you will have to know [how to use Caddy](https://caddyserver.com/docs/get
 
 Build Caddy with this plugin. You can add it from [Caddy's download page](https://caddyserver.com/download) or build it yourself with [xcaddy](https://github.com/caddyserver/xcaddy):
 
-```
-$ xcaddy build --with github.com/caddyserver/forwardproxy
+```bash
+xcaddy build --with github.com/caddyserver/forwardproxy
 ```
 
 Most people prefer the [Caddyfile](https://caddyserver.com/docs/caddyfile) for configuration. You can stand up a simple, wide-open unauthenticated forward proxy like this:
 
-```
+```caddyfile
 example.com
 route {
-	# UNAUTHENTICATED! USE ONLY FOR TESTING
-	forward_proxy
+    # UNAUTHENTICATED! USE ONLY FOR TESTING
+    forward_proxy
 }
 ```
 
@@ -54,9 +52,9 @@ route {
 
 Because `forward_proxy` is not a standard directive, its ordering relative to other handler directives is not defined, so we put it inside a `route` block. You can alternatively do something like this:
 
-```
+```caddyfile
 {
-	order forward_proxy before file_server
+    order forward_proxy before file_server
 }
 example.com
 # UNAUTHENTICATED! USE ONLY FOR TESTING
@@ -81,7 +79,7 @@ The `forward_proxy` directive has no default order and must be used within a `ro
 
 Here's an example of all properties in use (note that the syntax is subject to change):
 
-```
+```caddyfile
 :443, example.com
 route {
 	forward_proxy {
@@ -186,7 +184,7 @@ route {
 
   Default policy:
 
-  ```
+  ```text
   acl {  
   	deny 10.0.0.0/8 127.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1/128 fe80::/10  
   	allow all  
@@ -220,8 +218,10 @@ route {
   Default: no upstream proxy.
 
 ## Get forwardproxy
+
 ### Download prebuilt binary
-Binaries are at https://caddyserver.com/download  
+
+Binaries can be downloaded ([here](https://caddyserver.com/download)
 Don't forget to add `http.forwardproxy` plugin.
 
 ### Build from source
