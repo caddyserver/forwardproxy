@@ -585,45 +585,23 @@ func serveHiddenPage(w http.ResponseWriter, authErr error) error {
 // Hijacks the connection from ResponseWriter, writes the response and proxies data between targetConn
 // and hijacked connection.
 func serveHijack(w http.ResponseWriter, targetConn net.Conn) error {
-	clientConn, bufReader, err := http.NewResponseController(w).Hijack()
+	w.WriteHeader(http.StatusOK)
+	clientConn, brw, err := http.NewResponseController(w).Hijack()
 	if err != nil {
 		return caddyhttp.Error(http.StatusInternalServerError,
 			fmt.Errorf("hijack failed: %v", err))
 	}
 	defer clientConn.Close()
 	// bufReader may contain unprocessed buffered data from the client.
-	if bufReader != nil {
-		// snippet borrowed from `proxy` plugin
-		if n := bufReader.Reader.Buffered(); n > 0 {
-			rbuf, err := bufReader.Reader.Peek(n)
-			if err != nil {
-				return caddyhttp.Error(http.StatusBadGateway, err)
-			}
-			_, _ = targetConn.Write(rbuf)
-
-		}
+	// snippet borrowed from `proxy` plugin
+	if n := brw.Reader.Buffered(); n > 0 {
+		rbuf, _ := brw.Peek(n)
+		_, _ = targetConn.Write(rbuf)
 	}
-	// Since we hijacked the connection, we lost the ability to write and flush headers via w.
-	// Let's handcraft the response and send it manually.
-	res := &http.Response{
-		StatusCode: http.StatusOK,
-		Proto:      "HTTP/1.1",
-		ProtoMajor: 1,
-		ProtoMinor: 1,
-		Header:     make(http.Header),
-	}
-	res.Header.Set("Server", "Caddy")
-
-	buf := bufio.NewWriter(clientConn)
-	err = res.Write(buf)
+	err = brw.Flush()
 	if err != nil {
 		return caddyhttp.Error(http.StatusInternalServerError,
-			fmt.Errorf("failed to write response: %v", err))
-	}
-	err = buf.Flush()
-	if err != nil {
-		return caddyhttp.Error(http.StatusInternalServerError,
-			fmt.Errorf("failed to send response to client: %v", err))
+			fmt.Errorf("failed to flush to client: %v", err))
 	}
 
 	return dualStream(targetConn, clientConn, clientConn)
