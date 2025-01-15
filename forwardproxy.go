@@ -74,6 +74,16 @@ type Handler struct {
 	// How long to wait before timing out initial TCP connections.
 	DialTimeout caddy.Duration `json:"dial_timeout,omitempty"`
 
+	// Maximum number of idle connections to keep open, globally.
+	// Default: 50. Set to -1 for no limit.
+	// See https://pkg.go.dev/net/http#Transport.MaxIdleConns
+	MaxIdleConns int `json:"max_idle_conns,omitempty"`
+
+	// Maximum number of idle connections to keep open per host.
+	// Default: 0, which uses Go's default of 2.
+	// See https://pkg.go.dev/net/http#Transport.MaxIdleConnsPerHost
+	MaxIdleConnsPerHost int `json:"max_idle_conns_per_host,omitempty"`
+
 	// Optionally configure an upstream proxy to use.
 	Upstream string `json:"upstream,omitempty"`
 
@@ -111,9 +121,20 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 		h.DialTimeout = caddy.Duration(30 * time.Second)
 	}
 
+	// Default to 50 max idle connections if not specified,
+	// or no limit if -1 is specified.
+	maxIdleConns := h.MaxIdleConns
+	if maxIdleConns == 0 {
+		maxIdleConns = 50
+	}
+	if maxIdleConns < 0 {
+		maxIdleConns = 0
+	}
+
 	h.httpTransport = &http.Transport{
 		Proxy:               http.ProxyFromEnvironment,
-		MaxIdleConns:        50,
+		MaxIdleConns:        maxIdleConns,
+		MaxIdleConnsPerHost: h.MaxIdleConnsPerHost,
 		IdleConnTimeout:     60 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
