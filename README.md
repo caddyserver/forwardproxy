@@ -88,6 +88,7 @@ forward_proxy {
 	ports     80 443
 	hide_ip
 	hide_via
+	disable_insecure_upstreams_check
 	probe_resistance secret-link-kWWL9Q.com # alternatively you can use a real domain, such as caddyserver.com
 	serve_pac /secret-proxy.pac
 
@@ -133,6 +134,10 @@ forward_proxy {
   Only this address will trigger a 407 response, prompting browsers to request credentials from user and cache them for the rest of the session.
 
   Default: no probing resistance.
+- `disable_insecure_upstreams_check`  
+  Disables the check for insecure (HTTP) upstreams. By default, forwardproxy will refuse to connect to upstreams that are not using TLS. This option disables that check.
+
+  Default: check for insecure upstreams.
 
 ### Privacy
 
