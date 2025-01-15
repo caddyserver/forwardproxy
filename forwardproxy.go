@@ -20,7 +20,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/subtle"
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
@@ -35,12 +34,12 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	caddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/caddyserver/forwardproxy/httpclient"
+	caddyauthimported "github.com/proofrock/forwardproxy/caddyauth_imported"
 	"go.uber.org/zap"
 	"golang.org/x/net/proxy"
 )
@@ -53,7 +52,8 @@ func init() {
 //
 // EXPERIMENTAL: This handler is still experimental and subject to breaking changes.
 type Handler struct {
-	logger *zap.Logger
+	logger          *zap.Logger
+	BasicAuthModule caddyauthimported.HTTPBasicAuth
 
 	// Filename of the PAC file to serve.
 	PACPath string `json:"pac_path,omitempty"`
@@ -90,9 +90,6 @@ type Handler struct {
 	upstream    *url.URL // address of upstream proxy
 
 	aclRules []aclRule
-
-	// TODO: temporary/deprecated - we should try to reuse existing authentication modules instead!
-	AuthCredentials [][]byte `json:"auth_credentials,omitempty"` // slice with base64-encoded credentials
 }
 
 // CaddyModule returns the Caddy module information.
@@ -106,6 +103,8 @@ func (Handler) CaddyModule() caddy.ModuleInfo {
 // Provision ensures that h is set up properly before use.
 func (h *Handler) Provision(ctx caddy.Context) error {
 	h.logger = ctx.Logger(h)
+
+	h.BasicAuthModule.Provision(ctx)
 
 	if h.DialTimeout <= 0 {
 		h.DialTimeout = caddy.Duration(30 * time.Second)
@@ -145,7 +144,7 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	h.aclRules = append(h.aclRules, &aclAllRule{allow: true})
 
 	if h.ProbeResistance != nil {
-		if h.AuthCredentials == nil {
+		if len(h.BasicAuthModule.AccountList) == 0 {
 			return fmt.Errorf("probe resistance requires authentication")
 		}
 		if len(h.ProbeResistance.Domain) > 0 {
@@ -227,7 +226,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 	}
 
 	var authErr error
-	if h.AuthCredentials != nil {
+	if len(h.BasicAuthModule.Accounts) > 0 {
 		authErr = h.checkCredentials(r)
 	}
 	if h.ProbeResistance != nil && len(h.ProbeResistance.Domain) > 0 && reqHost == h.ProbeResistance.Domain {
@@ -403,45 +402,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 }
 
 func (h Handler) checkCredentials(r *http.Request) error {
-	pa := strings.Split(r.Header.Get("Proxy-Authorization"), " ")
-	if len(pa) != 2 {
-		return errors.New("Proxy-Authorization is required! Expected format: <type> <credentials>")
-	}
-	if strings.ToLower(pa[0]) != "basic" {
-		return errors.New("auth type is not supported")
-	}
-	for _, creds := range h.AuthCredentials {
-		if subtle.ConstantTimeCompare(creds, []byte(pa[1])) == 1 {
-			repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-			buf := make([]byte, base64.StdEncoding.DecodedLen(len(creds)))
-			_, _ = base64.StdEncoding.Decode(buf, creds) // should not err ever since we are decoding a known good input
-			cred := string(buf)
-			repl.Set("http.auth.user.id", cred[:strings.IndexByte(cred, ':')])
-			// Please do not consider this to be timing-attack-safe code. Simple equality is almost
-			// mindlessly substituted with constant time algo and there ARE known issues with this code,
-			// e.g. size of smallest credentials is guessable. TODO: protect from all the attacks! Hash?
-			return nil
-		}
-	}
 	repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-	buf := make([]byte, base64.StdEncoding.DecodedLen(len([]byte(pa[1]))))
-	n, err := base64.StdEncoding.Decode(buf, []byte(pa[1]))
-	if err != nil {
-		repl.Set("http.auth.user.id", "invalidbase64:"+err.Error())
-		return err
+
+	usr, validAuth, err := h.BasicAuthModule.AuthenticateNoCredsPrompt(r)
+	if validAuth {
+		repl.Set("http.auth.user.id", usr.ID)
+		return nil
 	}
-	if utf8.Valid(buf[:n]) {
-		cred := string(buf[:n])
-		i := strings.IndexByte(cred, ':')
-		if i >= 0 {
-			repl.Set("http.auth.user.id", "invalid:"+cred[:i])
-		} else {
-			repl.Set("http.auth.user.id", "invalidformat:"+cred)
-		}
+
+	// [POC] Old code differentiated between invalid credentials and invalid base64 ecc.
+	// which is not easy here. But it can be done, if this POC is validated by
+	// caddy's team.
+	if usr.ID != "" {
+		repl.Set("http.auth.user.id", "invalid:"+usr.ID)
 	} else {
-		repl.Set("http.auth.user.id", "invalid::")
+		repl.Set("http.auth.user.id", "invalidformat::")
 	}
-	return errors.New("invalid credentials")
+
+	// [POC] Change to error message, reporting the error. Need to differentiate between
+	// types of errors (err is != nil only if malformed, but I didn't want to change too much
+	// the AuthenticateNoCredsPrompt method that is copied from AuthenticateNoCredsPrompt)
+	if err == nil {
+		err = errors.New("auth error")
+	}
+	return errors.New("invalid credentials: " + err.Error())
 }
 
 func (h Handler) shouldServePACFile(r *http.Request) bool {
