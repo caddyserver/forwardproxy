@@ -43,8 +43,7 @@ $ xcaddy build --with github.com/caddyserver/forwardproxy
 Most people prefer the [Caddyfile](https://caddyserver.com/docs/caddyfile) for configuration. You can stand up a simple, wide-open unauthenticated forward proxy like this:
 
 ```
-example.com
-route {
+example.com {
 	# UNAUTHENTICATED! USE ONLY FOR TESTING
 	forward_proxy
 }
@@ -52,18 +51,18 @@ route {
 
 (Obviously, replace `example.com` with your domain name which is pointed at your machine.)
 
-Because `forward_proxy` is not a standard directive, its ordering relative to other handler directives is not defined, so we put it inside a `route` block. You can alternatively do something like this:
+The `forward_proxy` has a default [directive order](https://caddyserver.com/docs/caddyfile/directives#directive-order) of "after `file_server`". You may put it inside a `route` block or use the `order` global option to override this. The correct order is up to you and depends on your config. For example:
 
 ```
 {
-	order forward_proxy before file_server
+	order forward_proxy first
 }
-example.com
-# UNAUTHENTICATED! USE ONLY FOR TESTING
-forward_proxy
-```
 
-to define its position globally; then you don't need `route` blocks. The correct order is up to you and depends on your config.
+example.com {
+	# UNAUTHENTICATED! USE ONLY FOR TESTING
+	forward_proxy
+}
+```
 
 This plugin enables [Caddy](https://caddyserver.com) to act as a forward proxy, with support for HTTP/3, HTTP/2, and HTTP/1.1 requests. HTTP/3 and HTTP/2 will usually improve performance due to multiplexing.
 
@@ -77,34 +76,37 @@ For a complete list of features and their usage, see Caddyfile syntax:
 
 The simplest way to enable the forward proxy without authentication just include the `forward_proxy` directive in your Caddyfile. However, this allows anyone to use your server as a proxy, which might not be desirable.
 
-The `forward_proxy` directive has no default order and must be used within a `route` directive to explicitly specify its order of evaluation. In the Caddyfile the addresses must start with `:443` for the `forward_proxy` to work for proxy requests of all origins.
+In the Caddyfile the addresses must start with `:443` for the `forward_proxy` to work for proxy requests of all origins.
 
 Here's an example of all properties in use (note that the syntax is subject to change):
 
 ```
-:443, example.com
-route {
-	forward_proxy {
-		basic_auth user1 0NtCL2JPJBgPPMmlPcJ
-		basic_auth user2 密码
-		ports     80 443
-		hide_ip
-		hide_via
-		probe_resistance secret-link-kWWL9Q.com # alternatively you can use a real domain, such as caddyserver.com
-		serve_pac        /secret-proxy.pac
-		dial_timeout     30
-		upstream         https://user:password@extra-upstream-hop.com
-		acl {
-			allow     *.caddyserver.com
-			deny      192.168.1.1/32 192.168.0.0/16 *.prohibitedsite.com *.localhost
-			allow     ::1/128 8.8.8.8 github.com *.github.io
-			allow_file /path/to/whitelist.txt
-			deny_file  /path/to/blacklist.txt
-			allow     all
-			deny      all # unreachable rule, remaining requests are matched by `allow all` above
-		}
+forward_proxy {
+	basic_auth user1 0NtCL2JPJBgPPMmlPcJ
+	basic_auth user2 密码
+
+	ports     80 443
+	hide_ip
+	hide_via
+	probe_resistance secret-link-kWWL9Q.com # alternatively you can use a real domain, such as caddyserver.com
+	serve_pac /secret-proxy.pac
+
+	dial_timeout            30
+
+	max_idle_conns          50
+	max_idle_conns_per_host 2
+
+	upstream https://user:password@extra-upstream-hop.com
+
+	acl {
+		allow     *.caddyserver.com
+		deny      192.168.1.1/32 192.168.0.0/16 *.prohibitedsite.com *.localhost
+		allow     ::1/128 8.8.8.8 github.com *.github.io
+		allow_file /path/to/whitelist.txt
+		deny_file  /path/to/blacklist.txt
+		allow     all
+		deny      all # unreachable rule, remaining requests are matched by `allow all` above
 	}
-	file_server
 }
 ```
 
@@ -200,7 +202,19 @@ route {
 - `dial_timeout [integer]`  
   Sets timeout (in seconds) for establishing TCP connection to target website. Affects all requests.
 
-  Default: 20 seconds.
+  Default: 30 seconds.
+
+### Pooling
+
+By default, forwardproxy will reuse connections by using Go's built-in connection pooling mechanism. You can adjust the maximum number of idle connections to keep open:
+
+- `max_idle_conns [integer]`
+  Sets the maximum number of idle connections to keep open, globally. Set to -1 for no global limit. See https://pkg.go.dev/net/http#Transport.MaxIdleConns
+  Default: 50.
+
+- `max_idle_conns_per_host [integer]`
+  Sets the maximum number of idle connections to keep open _per host_. See https://pkg.go.dev/net/http#Transport.MaxIdleConnsPerHost
+  Default: 0, which uses Go's default of 2.
 
 ### Other
 

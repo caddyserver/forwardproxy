@@ -14,6 +14,7 @@ import (
 
 func init() {
 	httpcaddyfile.RegisterHandlerDirective("forward_proxy", parseCaddyfile)
+	httpcaddyfile.RegisterDirectiveOrder("forward_proxy", httpcaddyfile.After, "file_server")
 }
 
 func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
@@ -32,18 +33,16 @@ func EncodeAuthCredentials(user, pass string) (result []byte) {
 
 // UnmarshalCaddyfile unmarshals Caddyfile tokens into h.
 func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
-	if !d.Next() {
-		return d.ArgErr()
-	}
+	d.Next() // consume directive name
+
 	args := d.RemainingArgs()
 	if len(args) > 0 {
 		return d.ArgErr()
 	}
 	for nesting := d.Nesting(); d.NextBlock(nesting); {
-		subdirective := d.Val()
-		args := d.RemainingArgs()
-		switch subdirective {
+		switch d.Val() {
 		case "basic_auth":
+			args := d.RemainingArgs()
 			if len(args) != 2 {
 				return d.ArgErr()
 			}
@@ -58,7 +57,9 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				h.AuthCredentials = [][]byte{}
 			}
 			h.AuthCredentials = append(h.AuthCredentials, EncodeAuthCredentials(args[0], args[1]))
+
 		case "hosts":
+			args := d.RemainingArgs()
 			if len(args) == 0 {
 				return d.ArgErr()
 			}
@@ -66,7 +67,9 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				return d.Err("hosts subdirective specified twice")
 			}
 			h.Hosts = caddyhttp.MatchHost(args)
+
 		case "ports":
+			args := d.RemainingArgs()
 			if len(args) == 0 {
 				return d.ArgErr()
 			}
@@ -81,17 +84,23 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				}
 				h.AllowedPorts[i] = intPort
 			}
+
 		case "hide_ip":
+			args := d.RemainingArgs()
 			if len(args) != 0 {
 				return d.ArgErr()
 			}
 			h.HideIP = true
+
 		case "hide_via":
+			args := d.RemainingArgs()
 			if len(args) != 0 {
 				return d.ArgErr()
 			}
 			h.HideVia = true
+
 		case "probe_resistance":
+			args := d.RemainingArgs()
 			if len(args) > 1 {
 				return d.ArgErr()
 			}
@@ -104,7 +113,9 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			} else {
 				h.ProbeResistance = &ProbeResistance{}
 			}
+
 		case "serve_pac":
+			args := d.RemainingArgs()
 			if len(args) > 1 {
 				return d.ArgErr()
 			}
@@ -119,7 +130,9 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			} else {
 				h.PACPath = "/proxy.pac"
 			}
+
 		case "dial_timeout":
+			args := d.RemainingArgs()
 			if len(args) != 1 {
 				return d.ArgErr()
 			}
@@ -131,7 +144,31 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				return d.Err("dial_timeout cannot be negative.")
 			}
 			h.DialTimeout = caddy.Duration(timeout)
+
+		case "max_idle_conns":
+			args := d.RemainingArgs()
+			if len(args) != 1 {
+				return d.ArgErr()
+			}
+			val, err := strconv.Atoi(args[0])
+			if err != nil {
+				return d.ArgErr()
+			}
+			h.MaxIdleConns = val
+
+		case "max_idle_conns_per_host":
+			args := d.RemainingArgs()
+			if len(args) != 1 {
+				return d.ArgErr()
+			}
+			val, err := strconv.Atoi(args[0])
+			if err != nil {
+				return d.ArgErr()
+			}
+			h.MaxIdleConnsPerHost = val
+
 		case "upstream":
+			args := d.RemainingArgs()
 			if len(args) != 1 {
 				return d.ArgErr()
 			}
@@ -139,6 +176,7 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				return d.Err("upstream directive specified more than once")
 			}
 			h.Upstream = args[0]
+
 		case "acl":
 			for nesting := d.Nesting(); d.NextBlock(nesting); {
 				aclDirective := d.Val()
@@ -179,6 +217,7 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				ar := ACLRule{Subjects: ruleSubjects, Allow: aclAllow}
 				h.ACL = append(h.ACL, ar)
 			}
+
 		default:
 			return d.ArgErr()
 		}
