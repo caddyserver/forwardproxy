@@ -64,6 +64,9 @@ type Handler struct {
 	// If true, the Via header will not be added.
 	HideVia bool `json:"hide_via,omitempty"`
 
+	// If true, the strict check preventing HTTP upstreams will be disabled.
+	DisableInsecureUpstreamsCheck bool `json:"disable_insecure_upstreams_check,omitempty"`
+
 	// Host(s) (and ports) of the proxy. When you configure a client,
 	// you will give it the host (and port) of the proxy to use.
 	Hosts caddyhttp.MatchHost `json:"hosts,omitempty"`
@@ -191,7 +194,7 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 		}
 		h.upstream = upstreamURL
 
-		if !isLocalhost(h.upstream.Hostname()) && h.upstream.Scheme != "https" {
+		if !h.DisableInsecureUpstreamsCheck && !isLocalhost(h.upstream.Hostname()) && h.upstream.Scheme != "https" {
 			return errors.New("insecure schemes are only allowed to localhost upstreams")
 		}
 

@@ -99,6 +99,13 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			}
 			h.HideVia = true
 
+		case "disable_insecure_upstreams_check":
+			args := d.RemainingArgs()
+			if len(args) != 0 {
+				return d.ArgErr()
+			}
+			h.DisableInsecureUpstreamsCheck = true
+
 		case "probe_resistance":
 			args := d.RemainingArgs()
 			if len(args) > 1 {
