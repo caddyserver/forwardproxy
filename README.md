@@ -224,7 +224,10 @@ By default, forwardproxy will reuse connections by using Go's built-in connectio
 ### Other
 
 - `serve_pac [/path.pac]`  
-  Generate (in-memory) and serve a [Proxy Auto-Config](https://en.wikipedia.org/wiki/Proxy_auto-config) file on given path. If no path is provided, the PAC file will be served at `/proxy.pac`. NOTE: If you enable probe_resistance, your PAC file should also be served at a secret location; serving it at a predictable path can easily defeat probe resistance.
+  Generate (in-memory) and serve a [Proxy Auto-Config](https://en.wikipedia.org/wiki/Proxy_auto-config) file on given path. If no path is provided, the PAC file will be served at `/proxy.pac`.
+
+> [!NOTE]
+> If you enable probe_resistance, your PAC file should also be served at a secret location; serving it at a predictable path can easily defeat probe resistance.
 
   Default: no PAC file will be generated or served by Caddy (you still can manually create and serve proxy.pac like a regular file).
 - `upstream [https://username:password@upstreamproxy.site:443]`  
@@ -245,7 +248,7 @@ Don't forget to add `http.forwardproxy` plugin.
 
 ### Build from source
 
-0. Install latest Golang 1.20 or above and set `export GO111MODULE=on`
+1. Install latest Golang 1.20 or above and set `export GO111MODULE=on`
 1. `go install github.com/caddyserver/forwardproxy/cmd/caddy@latest`  
    Built `caddy` binary will be stored in $GOPATH/bin.  
 
@@ -255,7 +258,7 @@ Please be aware that client support varies widely, and there are edge cases wher
 
 The basic configuration is simply to use your site address and port (usually for all protocols - HTTP, HTTPS, etc). You can also specify the .pac file if you enabled that.
 
-Read [this blog post](https://sfrolov.io/2017/08/secure-web-proxy-client-en) about how to configure your specific client.
+Read [this blog post](https://web.archive.org/web/20170918171647/https://sfrolov.io/2017/08/secure-web-proxy-client-en) about how to configure your specific client.
 
 ## License
 
