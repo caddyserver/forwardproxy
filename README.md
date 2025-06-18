@@ -92,7 +92,7 @@ forward_proxy {
 	probe_resistance secret-link-kWWL9Q.com # alternatively you can use a real domain, such as caddyserver.com
 	serve_pac /secret-proxy.pac
 
-	dial_timeout            30
+	dial_timeout            30s
 
 	max_idle_conns          50
 	max_idle_conns_per_host 2
@@ -204,8 +204,8 @@ forward_proxy {
 
 ### Timeouts
 
-- `dial_timeout [integer]`  
-  Sets timeout (in seconds) for establishing TCP connection to target website. Affects all requests.
+- `dial_timeout [Duration]`  
+  Sets timeout (with units, e.g. 30s) for establishing TCP connection to target website. Affects all requests.
 
   Default: 30 seconds.
 
