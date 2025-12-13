@@ -43,7 +43,7 @@ $ xcaddy build --with github.com/caddyserver/forwardproxy
 Most people prefer the [Caddyfile](https://caddyserver.com/docs/caddyfile) for configuration. You can stand up a simple, wide-open unauthenticated forward proxy like this:
 
 ```
-example.com {
+:443, example.com {
 	# UNAUTHENTICATED! USE ONLY FOR TESTING
 	forward_proxy
 }
@@ -58,7 +58,7 @@ The `forward_proxy` has a default [directive order](https://caddyserver.com/docs
 	order forward_proxy first
 }
 
-example.com {
+:443, example.com {
 	# UNAUTHENTICATED! USE ONLY FOR TESTING
 	forward_proxy
 }
