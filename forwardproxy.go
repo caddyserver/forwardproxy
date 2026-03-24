@@ -245,9 +245,9 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	// start by splitting the request host and port
-	reqHost, _, err := net.SplitHostPort(r.Host)
-	if err != nil {
-		reqHost = r.Host // OK; probably just didn't have a port
+	reqHost := r.Host
+	if h, _, err := net.SplitHostPort(r.Host); err == nil {
+		reqHost = h
 	}
 
 	var authErr error
@@ -360,7 +360,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		r.Header.Add("Via", strconv.Itoa(r.ProtoMajor)+"."+strconv.Itoa(r.ProtoMinor)+" caddy")
 	}
 
-	var response *http.Response
+	var (
+		response *http.Response
+		err      error
+	)
 	if h.upstream == nil {
 		// non-upstream request uses httpTransport to reuse connections
 		if r.Body != nil &&
