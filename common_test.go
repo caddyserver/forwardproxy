@@ -199,7 +199,7 @@ func TestMain(m *testing.M) {
 		proxyHandler: &Handler{
 			PACPath:         defaultPACPath,
 			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
-			AuthCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
+			authCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
 		},
 	}
 
@@ -209,7 +209,7 @@ func TestMain(m *testing.M) {
 		proxyHandler: &Handler{
 			PACPath:         defaultPACPath,
 			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
-			AuthCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
+			authCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
 		},
 	}
 
@@ -221,7 +221,7 @@ func TestMain(m *testing.M) {
 			PACPath:         "/superhiddenfile.pac",
 			ACL:             []ACLRule{{Subjects: []string{"all"}, Allow: true}},
 			ProbeResistance: &ProbeResistance{Domain: "test.localhost"},
-			AuthCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
+			authCredentials: [][]byte{EncodeAuthCredentials("test", "pass")},
 		},
 		httpRedirPort: "8880",
 	}
@@ -249,7 +249,7 @@ func TestMain(m *testing.M) {
 		tls:  true,
 		proxyHandler: &Handler{
 			Upstream:        "https://test:pass@127.0.0.1:4891",
-			AuthCredentials: [][]byte{EncodeAuthCredentials("upstreamtest", "upstreampass")},
+			authCredentials: [][]byte{EncodeAuthCredentials("upstreamtest", "upstreampass")},
 		},
 	}
 

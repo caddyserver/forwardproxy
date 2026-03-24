@@ -45,6 +45,8 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+const ProxyAuthHeaderKey = "Proxy-Authorization"
+
 func init() {
 	caddy.RegisterModule(Handler{})
 }
@@ -105,7 +107,23 @@ type Handler struct {
 	aclRules []aclRule
 
 	// TODO: temporary/deprecated - we should try to reuse existing authentication modules instead!
-	AuthCredentials [][]byte `json:"auth_credentials,omitempty"` // slice with base64-encoded credentials
+
+	// AuthCredentials is a slice of clear text credentials.
+	//
+	// A space delimits the username and password, e.g., "<USERNAME> <PASSWORD>".
+	//
+	// Example value: "bob loves-muffins"
+	AuthCredentials []string `json:"auth_credentials,omitempty"`
+
+	// authCredentials is a slice of base64 encoded credential values.
+	//
+	// Each [AuthCredentials] value is parsed into this field during
+	// module initialization.
+	//
+	// The decoded value uses a colon to delimit the username and password,
+	// e.g., "<USERNAME>:<PASSWORD>", conforming to basic authentication
+	// standards.
+	authCredentials [][]byte
 }
 
 // CaddyModule returns the Caddy module information.
@@ -119,6 +137,28 @@ func (Handler) CaddyModule() caddy.ModuleInfo {
 // Provision ensures that h is set up properly before use.
 func (h *Handler) Provision(ctx caddy.Context) error {
 	h.logger = ctx.Logger(h)
+
+	// parse space delimited basic auth credentials
+	if len(h.AuthCredentials) > 0 && h.authCredentials == nil {
+		h.authCredentials = make([][]byte, len(h.AuthCredentials))
+	}
+	for i, c := range h.AuthCredentials {
+		u, p, found := strings.Cut(c, " ")
+		switch {
+		case !found:
+			return errors.New("improperly formatted credential supplied")
+		case len(u) == 0:
+			return errors.New("basic auth credential has zero length username")
+		case len(p) == 0:
+			// TODO policy for empty passwords?
+			return errors.New("basic auth credential has zero length password")
+		}
+		h.logger.Sugar().Debugf(`setting basic auth credential for: "%s"`, u)
+		if strings.Count(c, " ") > 1 {
+			h.logger.Sugar().Infof(`multiple spaces detected in basic auth credential for: "%s"`, u)
+		}
+		h.authCredentials[i] = []byte(EncodeAuthCredentials(string(u), string(p)))
+	}
 
 	if h.DialTimeout <= 0 {
 		h.DialTimeout = caddy.Duration(30 * time.Second)
@@ -169,7 +209,7 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	h.aclRules = append(h.aclRules, &aclAllRule{allow: true})
 
 	if h.ProbeResistance != nil {
-		if h.AuthCredentials == nil {
+		if h.authCredentials == nil {
 			return fmt.Errorf("probe resistance requires authentication")
 		}
 		if len(h.ProbeResistance.Domain) > 0 {
@@ -251,7 +291,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 	}
 
 	var authErr error
-	if h.AuthCredentials != nil {
+	if h.authCredentials != nil {
 		authErr = h.checkCredentials(r)
 	}
 	if h.ProbeResistance != nil && len(h.ProbeResistance.Domain) > 0 && reqHost == h.ProbeResistance.Domain {
@@ -426,45 +466,88 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 	return forwardResponse(w, response)
 }
 
-func (h Handler) checkCredentials(r *http.Request) error {
-	pa := strings.Split(r.Header.Get("Proxy-Authorization"), " ")
-	if len(pa) != 2 {
-		return errors.New("Proxy-Authorization is required! Expected format: <type> <credentials>")
+func DecodeAuthCredential(encoded string) (username, password string, err error) {
+	enc := []byte(encoded)
+	decoded := make([]byte, base64.StdEncoding.DecodedLen(len(enc)))
+
+	if _, err := base64.StdEncoding.Decode(decoded, enc); err != nil {
+		return "", "", fmt.Errorf("failed to decode base64 encoded credentials: %w", err)
+	} else if !utf8.Valid(decoded) {
+		return "", "", fmt.Errorf("base64 decoded credentials contain invalid (non-UTF8) characters")
 	}
-	if strings.ToLower(pa[0]) != "basic" {
+
+	if u, p, found := bytes.Cut(decoded, []byte(":")); !found {
+		err = fmt.Errorf("poorly formatted credential")
+		return
+	} else {
+		username, password = string(u), string(p)
+	}
+
+	return username, password, nil
+}
+
+// checkCredentials extracts the Proxy-Authorization header from the request
+// and validates supplied credentials against configured values.
+//
+// Expected Header Format: Proxy-Authorization: Basic <b64(username:password)>
+func (h Handler) checkCredentials(r *http.Request) error {
+	//=========================
+	// EXTRACT AND PARSE HEADER
+	//=========================
+
+	var (
+		rawHeader   string // raw proxy header string
+		authType    string // should be "basic"
+		encodedCred string // raw base64 encoded credentials extracted from header
+		username    string // username extracted after decoding credentials
+	)
+
+	// ensure header is set
+	if rawHeader = r.Header.Get(ProxyAuthHeaderKey); len(rawHeader) == 0 {
+		return fmt.Errorf("missing %s header", ProxyAuthHeaderKey)
+	}
+
+	// cut header on space delimiting "<TYPE> B64Cred"
+	if aT, raw, found := strings.Cut(rawHeader, " "); found {
+		authType, encodedCred = strings.ToLower(aT), raw
+	} else {
+		return errors.New("missing required header > Proxy-Authorization: <type> <b64(username:password)>")
+	}
+
+	if authType != "basic" {
 		return errors.New("auth type is not supported")
 	}
-	for _, creds := range h.AuthCredentials {
-		if subtle.ConstantTimeCompare(creds, []byte(pa[1])) == 1 {
-			repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-			buf := make([]byte, base64.StdEncoding.DecodedLen(len(creds)))
-			_, _ = base64.StdEncoding.Decode(buf, creds) // should not err ever since we are decoding a known good input
-			cred := string(buf)
-			repl.Set("http.auth.user.id", cred[:strings.IndexByte(cred, ':')])
+
+	//================================
+	// DECODE AND CHECK THE CREDENTIAL
+	//================================
+
+	{
+		u, p, err := DecodeAuthCredential(encodedCred)
+		switch {
+		case len(u) == 0:
+			err = fmt.Errorf("empty username")
+		case len(p) == 0:
+			err = fmt.Errorf("empty password")
+		}
+		if err != nil {
+			return err
+		}
+		username = string(u)
+	}
+
+	repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
+	for _, creds := range h.authCredentials {
+		if subtle.ConstantTimeCompare(creds, []byte(encodedCred)) == 1 {
+			repl.Set("http.auth.user.id", username)
 			// Please do not consider this to be timing-attack-safe code. Simple equality is almost
 			// mindlessly substituted with constant time algo and there ARE known issues with this code,
 			// e.g. size of smallest credentials is guessable. TODO: protect from all the attacks! Hash?
 			return nil
 		}
 	}
-	repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-	buf := make([]byte, base64.StdEncoding.DecodedLen(len([]byte(pa[1]))))
-	n, err := base64.StdEncoding.Decode(buf, []byte(pa[1]))
-	if err != nil {
-		repl.Set("http.auth.user.id", "invalidbase64:"+err.Error())
-		return err
-	}
-	if utf8.Valid(buf[:n]) {
-		cred := string(buf[:n])
-		i := strings.IndexByte(cred, ':')
-		if i >= 0 {
-			repl.Set("http.auth.user.id", "invalid:"+cred[:i])
-		} else {
-			repl.Set("http.auth.user.id", "invalidformat:"+cred)
-		}
-	} else {
-		repl.Set("http.auth.user.id", "invalid::")
-	}
+
+	// don't disclose credential info in logs
 	return errors.New("invalid credentials")
 }
 

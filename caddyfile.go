@@ -2,6 +2,7 @@ package forwardproxy
 
 import (
 	"encoding/base64"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -42,21 +43,17 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	for nesting := d.Nesting(); d.NextBlock(nesting); {
 		switch d.Val() {
 		case "basic_auth":
+			// just append the space delimited credentials and let Provision handle
+			// input validation and finalization
 			args := d.RemainingArgs()
 			if len(args) != 2 {
 				return d.ArgErr()
 			}
-			if len(args[0]) == 0 {
-				return d.Err("empty usernames are not allowed")
-			}
-			// TODO: Evaluate policy of allowing empty passwords.
-			if strings.Contains(args[0], ":") {
-				return d.Err("character ':' in usernames is not allowed")
-			}
+
 			if h.AuthCredentials == nil {
-				h.AuthCredentials = [][]byte{}
+				h.AuthCredentials = []string{}
 			}
-			h.AuthCredentials = append(h.AuthCredentials, EncodeAuthCredentials(args[0], args[1]))
+			h.AuthCredentials = append(h.AuthCredentials, fmt.Sprintf("%s %s", args[0], args[1]))
 
 		case "hosts":
 			args := d.RemainingArgs()
