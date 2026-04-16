@@ -90,6 +90,13 @@ type Handler struct {
 	// Optionally configure an upstream proxy to use.
 	Upstream string `json:"upstream,omitempty"`
 
+	// Custom address resolution entries. Each entry maps a host:port pattern
+	// to a dial address, similar to curl's --resolve flag. Patterns support
+	// wildcard prefixes (e.g., *.example.com:443). When the proxy needs to
+	// dial a target matching a pattern, it connects to the specified address
+	// instead, without DNS resolution of the original hostname.
+	Resolve []ResolveEntry `json:"resolve,omitempty"`
+
 	// Access control list.
 	ACL []ACLRule `json:"acl,omitempty"`
 
@@ -106,6 +113,40 @@ type Handler struct {
 
 	// TODO: temporary/deprecated - we should try to reuse existing authentication modules instead!
 	AuthCredentials [][]byte `json:"auth_credentials,omitempty"` // slice with base64-encoded credentials
+}
+
+// ResolveEntry maps a host:port pattern to a dial address.
+// The pattern may use a wildcard prefix (e.g., *.example.com:443).
+type ResolveEntry struct {
+	// The host:port pattern to match (e.g., "example.com:443", "*.local:443").
+	From string `json:"from"`
+	// The address:port to dial instead (e.g., "127.0.0.1:443").
+	To string `json:"to"`
+}
+
+// resolveAddress checks if hostPort matches any resolve entry and returns
+// the mapped address if found, or the original hostPort if not.
+func (h Handler) resolveAddress(hostPort string) string {
+	for _, entry := range h.Resolve {
+		if matchHostPort(entry.From, hostPort) {
+			return entry.To
+		}
+	}
+	return hostPort
+}
+
+// matchHostPort matches a hostPort against a pattern that may contain
+// a wildcard prefix (e.g., *.example.com:443 matches sub.example.com:443).
+func matchHostPort(pattern, hostPort string) bool {
+	if pattern == hostPort {
+		return true
+	}
+	if !strings.HasPrefix(pattern, "*.") {
+		return false
+	}
+	// Wildcard: *.example.com:443 matches anything.example.com:443
+	suffix := pattern[1:] // ".example.com:443"
+	return strings.HasSuffix(hostPort, suffix)
 }
 
 // CaddyModule returns the Caddy module information.
@@ -184,6 +225,10 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	}
 	h.dialContext = dialer.DialContext
 	h.httpTransport.DialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
+		resolved := h.resolveAddress(address)
+		if resolved != address {
+			return h.dialContext(ctx, network, resolved)
+		}
 		return h.dialContextCheckACL(ctx, network, address)
 	}
 
@@ -304,7 +349,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		if hostPort == "" {
 			hostPort = r.Host
 		}
-		targetConn, err := h.dialContextCheckACL(ctx, "tcp", hostPort)
+
+		// Resolve configured address mappings. When resolve matches,
+		// bypass ACL — the target is explicitly configured, not user-controlled.
+		dialAddr := h.resolveAddress(hostPort)
+		var targetConn net.Conn
+		var err error
+		if dialAddr != hostPort {
+			targetConn, err = h.dialContext(ctx, "tcp", dialAddr)
+		} else {
+			targetConn, err = h.dialContextCheckACL(ctx, "tcp", hostPort)
+		}
 		if err != nil {
 			return err
 		}

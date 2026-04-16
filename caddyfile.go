@@ -184,6 +184,13 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			}
 			h.Upstream = args[0]
 
+		case "resolve":
+			args := d.RemainingArgs()
+			if len(args) != 2 {
+				return d.Err("resolve expects exactly two arguments: <from_host:port> <to_addr:port>")
+			}
+			h.Resolve = append(h.Resolve, ResolveEntry{From: args[0], To: args[1]})
+
 		case "acl":
 			for nesting := d.Nesting(); d.NextBlock(nesting); {
 				aclDirective := d.Val()
