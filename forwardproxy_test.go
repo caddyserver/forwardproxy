@@ -216,6 +216,19 @@ func TestGETNoAuth(t *testing.T) {
 	}
 }
 
+func TestGETAllowedIPDialFailureReturnsBadGateway(t *testing.T) {
+	const useTLS = true
+	for _, httpProxyVer := range testHTTPProxyVersions {
+		response, err := getViaProxy("198.51.100.1:12345", "/", caddyForwardProxy.addr, httpProxyVer, credentialsEmpty, useTLS)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if response.StatusCode != http.StatusBadGateway {
+			t.Fatalf("Expected response 502 StatusBadGateway for allowed host with dial failure, got %d", response.StatusCode)
+		}
+	}
+}
+
 func TestGETAuthCorrect(t *testing.T) {
 	const useTLS = true
 	for _, httpProxyVer := range testHTTPProxyVersions {

@@ -533,15 +533,32 @@ match:
 
 	// This is net.Dial's default behavior: if the host resolves to multiple IP addresses,
 	// Dial will try each IP address in order until one succeeds
+
+	var lastDialErr error
+	var hadAllowedIP bool
+
 	for _, ip := range IPs {
 		if !h.hostIsAllowed(host, ip) {
 			continue
 		}
 
+		hadAllowedIP = true
+
 		conn, err = h.dialContext(ctx, network, net.JoinHostPort(ip.String(), port))
 		if err == nil {
 			return conn, nil
 		}
+
+		lastDialErr = err
+	}
+
+	// If at least one IP address was permitted by ACL but dialing all of them failed,
+	// return Bad Gateway. Otherwise the host did not have any allowed IPs and is forbidden.
+	if hadAllowedIP {
+		return nil, caddyhttp.Error(
+			http.StatusBadGateway,
+			fmt.Errorf("failed to connect to %s after trying allowed IP addresses: %v", host, lastDialErr),
+		)
 	}
 
 	return nil, caddyhttp.Error(http.StatusForbidden, fmt.Errorf("no allowed IP addresses for %s", host))
