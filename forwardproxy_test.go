@@ -29,6 +29,18 @@ import (
 	"golang.org/x/net/http2"
 )
 
+type errorReadCloser struct {
+	err error
+}
+
+func (r errorReadCloser) Read([]byte) (int, error) {
+	return 0, r.err
+}
+
+func (r errorReadCloser) Close() error {
+	return nil
+}
+
 func dial(proxyAddr, httpProxyVer string, useTLS bool) (net.Conn, error) {
 	// always dial localhost for testing purposes
 	if useTLS {
@@ -366,6 +378,44 @@ func TestCONNECTViaUpstream(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestDualStreamClosesTargetWhenClientReaderErrors(t *testing.T) {
+	target, peer := net.Pipe()
+	defer peer.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- dualStream(target, errorReadCloser{err: io.ErrUnexpectedEOF}, io.Discard)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("dualStream did not return after client reader error")
+	}
+}
+
+func TestDualStreamLimitsTargetReadAfterClientReaderEOF(t *testing.T) {
+	origHalfCloseTimeout := tunnelHalfCloseTimeout
+	tunnelHalfCloseTimeout = 10 * time.Millisecond
+	defer func() {
+		tunnelHalfCloseTimeout = origHalfCloseTimeout
+	}()
+
+	target, peer := net.Pipe()
+	defer peer.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- dualStream(target, errorReadCloser{err: io.EOF}, io.Discard)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("dualStream did not return after target read deadline")
 	}
 }
 

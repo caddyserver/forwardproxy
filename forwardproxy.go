@@ -631,9 +631,7 @@ func serveHijack(w http.ResponseWriter, targetConn net.Conn) error {
 	return dualStream(targetConn, clientConn, clientConn)
 }
 
-// Copies data target->clientReader and clientWriter->target, and flushes as needed
-// Returns when clientWriter-> target stream is done.
-// Caddy should finish writing target -> clientReader.
+// Copies data clientReader->target and target->clientWriter, and flushes as needed.
 func dualStream(target net.Conn, clientReader io.ReadCloser, clientWriter io.Writer) error {
 	stream := func(w io.Writer, r io.Reader) error {
 		// copy bytes from r to w
@@ -648,13 +646,34 @@ func dualStream(target net.Conn, clientReader io.ReadCloser, clientWriter io.Wri
 		}
 		return _err
 	}
-	go stream(target, clientReader) //nolint: errcheck
-	return stream(clientWriter, target)
+
+	var closeOnce sync.Once
+	closeTarget := func() {
+		closeOnce.Do(func() {
+			_ = target.Close()
+		})
+	}
+	limitTargetRead := func(err error) {
+		if err != nil || tunnelHalfCloseTimeout <= 0 {
+			closeTarget()
+			return
+		}
+		_ = target.SetReadDeadline(time.Now().Add(tunnelHalfCloseTimeout))
+	}
+
+	go func() {
+		limitTargetRead(stream(target, clientReader))
+	}()
+	err := stream(clientWriter, target)
+	closeTarget()
+	return err
 }
 
 type closeWriter interface {
 	CloseWrite() error
 }
+
+var tunnelHalfCloseTimeout = 30 * time.Second
 
 // flushingIoCopy is analogous to buffering io.Copy(), but also attempts to flush on each iteration.
 // If dst does not implement http.Flusher(e.g. net.TCPConn), it will do a simple io.CopyBuffer().
