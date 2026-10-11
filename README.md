@@ -255,8 +255,6 @@ Please be aware that client support varies widely, and there are edge cases wher
 
 The basic configuration is simply to use your site address and port (usually for all protocols - HTTP, HTTPS, etc). You can also specify the .pac file if you enabled that.
 
-Read [this blog post](https://sfrolov.io/2017/08/secure-web-proxy-client-en) about how to configure your specific client.
-
 ## License
 
 Licensed under the [Apache License](LICENSE)
