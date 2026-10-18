@@ -238,6 +238,9 @@ By default, forwardproxy will reuse connections by using Go's built-in connectio
 
   Default: no upstream proxy.
 
+For a local SOCKS5 server on a Unix socket, use `upstream socks5://unix://run/tor/socks.sock` (absolute socket path `/run/tor/socks.sock`). Target hostnames, including `.onion` names, are resolved by the SOCKS server. This form accepts no credentials, query, or fragment; ordinary TCP upstreams keep their existing syntax and security checks.
+
+
 ## Get forwardproxy
 ### Download prebuilt binary
 Binaries are at https://caddyserver.com/download  
