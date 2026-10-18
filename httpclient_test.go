@@ -89,13 +89,16 @@ func TestHttpClientH2Multiplexing(t *testing.T) {
 			// always dial localhost for testing purposes
 			conn, err := dialer.Dial("tcp", caddyTestTarget.addr)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
+				return
 			}
 			response, err := getResourceViaProxyConn(conn, caddyTestTarget.addr, resource, httpTargetVer, credentialsCorrect)
 			if err != nil {
-				t.Fatal(httpProxyVer, httpTargetVer, err)
+				t.Error(httpProxyVer, httpTargetVer, err)
+				return
 			} else if err = responseExpected(response, caddyTestTarget.contents[resource]); err != nil {
-				t.Fatal(httpProxyVer, httpTargetVer, err)
+				t.Error(httpProxyVer, httpTargetVer, err)
+				return
 			}
 		}
 	}
@@ -107,4 +110,5 @@ func TestHttpClientH2Multiplexing(t *testing.T) {
 		go _test()
 		time.Sleep(sleepInterval)
 	}
+	wg.Wait()
 }

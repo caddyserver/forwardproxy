@@ -238,8 +238,13 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 			return fmt.Errorf("bad upstream URL: %v", err)
 		}
 		h.upstream = upstreamURL
+		unixSOCKS := upstreamURL.Scheme == "socks5" && upstreamURL.Host == "unix:"
+		if unixSOCKS && (!strings.HasPrefix(upstreamURL.Path, "//") || len(upstreamURL.Path) <= 2 ||
+			upstreamURL.User != nil || upstreamURL.RawQuery != "" || upstreamURL.Fragment != "") {
+			return errors.New("Unix SOCKS5 upstream requires socks5://unix://<absolute-path> without credentials, query, or fragment")
+		}
 
-		if !h.DisableInsecureUpstreamsCheck && !isLocalhost(h.upstream.Hostname()) && h.upstream.Scheme != "https" {
+		if !h.DisableInsecureUpstreamsCheck && !unixSOCKS && !isLocalhost(h.upstream.Hostname()) && h.upstream.Scheme != "https" {
 			return errors.New("insecure schemes are only allowed to localhost upstreams")
 		}
 
@@ -269,7 +274,13 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 		proxy.RegisterDialerType("https", registerHTTPDialer)
 		proxy.RegisterDialerType("http", registerHTTPDialer)
 
-		upstreamDialer, err := proxy.FromURL(h.upstream, dialer)
+		var upstreamDialer proxy.Dialer
+		if unixSOCKS {
+			// Keep target-name resolution at the SOCKS server (including .onion).
+			upstreamDialer, err = proxy.SOCKS5("unix", strings.TrimPrefix(upstreamURL.Path, "/"), nil, dialer)
+		} else {
+			upstreamDialer, err = proxy.FromURL(h.upstream, dialer)
+		}
 		if err != nil {
 			return errors.New("failed to create proxy to upstream: " + err.Error())
 		}
